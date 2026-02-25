@@ -99,6 +99,15 @@
     .footer-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
     .footer-note { font-size: 0.72rem; color: var(--muted); max-width: 500px; text-align: right; line-height: 1.5; }
     .loading-msg { max-width: 1200px; margin: 4rem auto; padding: 0 2rem; text-align: center; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.85rem; line-height: 2; }
+    .download-bar { display: flex; justify-content: center; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; padding: 0 1.4rem 1.2rem; }
+    .download-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; font-family: 'DM Mono', monospace; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; transition: all 0.15s; letter-spacing: 0.03em; }
+    .download-btn:hover { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .download-btn.btn-gain { border-color: var(--gain); color: var(--gain); }
+    .download-btn.btn-gain:hover { background: var(--gain); color: white; }
+    .download-btn.btn-loss { border-color: var(--loss); color: var(--loss); }
+    .download-btn.btn-loss:hover { background: var(--loss); color: white; }
+    .download-btn.btn-all { border-color: var(--muted); color: var(--muted); }
+    .download-btn.btn-all:hover { background: var(--muted); color: white; }
 
     @keyframes fadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
   </style>
@@ -141,7 +150,48 @@
 </footer>
 
 <script>
-  // Live clock
+  // CSV Download helper
+  function toCSV(rows, headers) {
+    const lines = [headers.join(',')];
+    rows.forEach(r => lines.push(headers.map(h => `"${r[h] ?? ''}"`).join(',')));
+    return lines.join('\n');
+  }
+
+  function downloadCSV(content, filename) {
+    const blob = new Blob([content], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadWinners(winners, date) {
+    const csv = toCSV(winners, ['rank','ticker','company','sector','predicted_change_pct','reason']);
+    downloadCSV(csv, `stockcast-winners-${date}.csv`);
+  }
+
+  function downloadLosers(losers, date) {
+    const csv = toCSV(losers, ['rank','ticker','company','sector','predicted_change_pct','reason']);
+    downloadCSV(csv, `stockcast-losers-${date}.csv`);
+  }
+
+  function downloadFullList(fullList, date) {
+    const csv = toCSV(fullList, ['ticker','current_price','daily_change_pct','weekly_change_pct','monthly_change_pct','volume_ratio','momentum_score','composite_score']);
+    downloadCSV(csv, `stockcast-full-ranked-${date}.csv`);
+  }
+
+  function downloadYesterdayPerf(winners, losers, date) {
+    const allRows = [
+      ...winners.map(e => ({...e, type: 'WINNER'})),
+      ...losers.map(e => ({...e, type: 'LOSER'}))
+    ];
+    const headers = ['ticker','type','predicted_change_pct','actual_change_pct','outcome','accuracy_score','company','sector','reason'];
+    const csv = toCSV(allRows, headers);
+    downloadCSV(csv, `stockcast-performance-${date}.csv`);
+  }
+
+  // Store data globally for download buttons
+  let _data = null;
   function updateTime() {
     document.getElementById('liveTime').textContent =
       new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Chicago',timeZoneName:'short'});
@@ -235,6 +285,7 @@
       const data = await res.json();
 
       const { today, yesterday, indices = {} } = data;
+      _data = data;
 
       // Update hero summary with AI market insight
       if (today.market_summary) {
@@ -275,6 +326,11 @@
               ${today.losers.map(e => renderStockRow(e, 'loser')).join('')}
             </div>
           </div>
+          <div class="download-bar">
+            <button class="download-btn btn-gain" onclick="downloadWinners(_data.today.winners, _data.today.date)">↓ Download Winners CSV</button>
+            <button class="download-btn btn-loss" onclick="downloadLosers(_data.today.losers, _data.today.date)">↓ Download Losers CSV</button>
+            <button class="download-btn btn-all" onclick="downloadFullList(_data.full_ranked_list || [], _data.today.date)">↓ Download Full Ranked List (${data.full_ranked_list ? data.full_ranked_list.length : 0} stocks)</button>
+          </div>
         </section>
 
         <section class="section">
@@ -293,7 +349,12 @@
                     <tr class="group-header group-loser"><td colspan="5">▼ Predicted Losers</td></tr>
                     ${yesterday.losers.map(e => renderPerfRow(e, 'loser')).join('')}
                   </tbody>
-                </table>`
+                </table>
+                <div class="download-bar">
+                  <button class="download-btn btn-gain" onclick="downloadWinners(_data.yesterday.winners, _data.yesterday.date)">↓ Download Winners CSV</button>
+                  <button class="download-btn btn-loss" onclick="downloadLosers(_data.yesterday.losers, _data.yesterday.date)">↓ Download Losers CSV</button>
+                  <button class="download-btn btn-all" onclick="downloadYesterdayPerf(_data.yesterday.winners, _data.yesterday.losers, _data.yesterday.date)">↓ Download Full Performance CSV</button>
+                </div>`
             }
           </div>
         </section>
