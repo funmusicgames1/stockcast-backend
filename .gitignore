@@ -1,0 +1,10 @@
+.env
+.env.backup
+*.env
+__pycache__/
+*.pyc
+data.json
+*.egg-info/
+.venv/
+venv/
+"HTML snd Data/"

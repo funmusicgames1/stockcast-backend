@@ -1,0 +1,12 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python main.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[cronjobs]]
+command = "python main.py"
+# 6:00 AM CST = 12:00 PM UTC (UTC is CST + 6 hours)
+schedule = "0 12 * * *"
