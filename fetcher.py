@@ -8,8 +8,17 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import time
+import random
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting config — prevents Yahoo Finance from blocking requests
+DELAY_BETWEEN_TICKERS = 0.3   # seconds between each ticker
+BATCH_SIZE = 25                # fetch in batches then pause
+BATCH_PAUSE = 3.0              # seconds to pause between batches
+MAX_RETRIES = 2                # retry failed tickers this many times
+RETRY_DELAY = 5.0              # seconds to wait before retrying
 
 # Universe of stocks to consider — broad coverage across all major sectors
 # The AI will pick the top 10 expected winners and losers from this pool
@@ -65,24 +74,30 @@ STOCK_UNIVERSE = list(dict.fromkeys(STOCK_UNIVERSE))
 STOCK_UNIVERSE = list(dict.fromkeys(STOCK_UNIVERSE))
 
 
-def fetch_single_ticker(ticker: str, start: str, end: str) -> pd.DataFrame | None:
-    """Fetch data for a single ticker using Ticker.history() — avoids TzCache bug."""
-    try:
-        t = yf.Ticker(ticker)
-        df = t.history(start=start, end=end, auto_adjust=True)
-        if df.empty:
-            return None
-        return df
-    except Exception as e:
-        logger.warning(f"Failed to fetch {ticker}: {e}")
-        return None
+def fetch_single_ticker(ticker: str, start: str, end: str, retries: int = MAX_RETRIES) -> pd.DataFrame | None:
+    """Fetch data for a single ticker with retry logic."""
+    for attempt in range(retries + 1):
+        try:
+            t = yf.Ticker(ticker)
+            df = t.history(start=start, end=end, auto_adjust=True)
+            if df.empty:
+                return None
+            return df
+        except Exception as e:
+            if attempt < retries:
+                wait = RETRY_DELAY * (attempt + 1) + random.uniform(0, 2)
+                logger.warning(f"Retry {attempt + 1}/{retries} for {ticker} in {wait:.1f}s: {e}")
+                time.sleep(wait)
+            else:
+                logger.warning(f"Failed to fetch {ticker} after {retries + 1} attempts: {e}")
+                return None
 
 
 def fetch_stock_data() -> dict:
     """
-    Fetch price history and key metrics for all stocks in the universe.
-    Uses individual Ticker.history() calls to avoid the batch TzCache bug.
-    Returns a dict keyed by ticker with price/volume/change data.
+    Fetch price history for all stocks using batch download.
+    Downloads all tickers in one request — much faster and avoids rate limits.
+    Falls back to individual fetching for any tickers that fail.
     """
     logger.info(f"Fetching data for {len(STOCK_UNIVERSE)} stocks...")
 
@@ -93,20 +108,66 @@ def fetch_stock_data() -> dict:
 
     stock_data = {}
 
-    for ticker in STOCK_UNIVERSE:
+    # Split into batches of 50 to avoid oversized requests
+    batch_size = 50
+    batches = [STOCK_UNIVERSE[i:i+batch_size] for i in range(0, len(STOCK_UNIVERSE), batch_size)]
+
+    all_closes = {}
+    all_volumes = {}
+
+    for batch_num, batch in enumerate(batches):
+        logger.info(f"Downloading batch {batch_num + 1}/{len(batches)} ({len(batch)} tickers)...")
         try:
-            df = fetch_single_ticker(ticker, start_str, end_str)
+            raw = yf.download(
+                tickers=" ".join(batch),
+                start=start_str,
+                end=end_str,
+                auto_adjust=True,
+                progress=False,
+                threads=True,
+                group_by="ticker",
+            )
 
-            if df is None or df.empty:
-                logger.warning(f"No data for {ticker}, skipping.")
+            if raw.empty:
+                logger.warning(f"Batch {batch_num + 1} returned empty data.")
+                time.sleep(5)
                 continue
 
-            df = df.dropna(subset=["Close"])
-            if len(df) < 5:
-                continue
+            # Extract close and volume for each ticker
+            for ticker in batch:
+                try:
+                    if len(batch) == 1:
+                        close = raw["Close"]
+                        volume = raw["Volume"]
+                    else:
+                        if ticker not in raw.columns.get_level_values(0):
+                            continue
+                        close = raw[ticker]["Close"]
+                        volume = raw[ticker]["Volume"]
 
-            close_prices = df["Close"]
-            volumes = df["Volume"]
+                    close = close.dropna()
+                    volume = volume.dropna()
+
+                    if len(close) >= 5:
+                        all_closes[ticker] = close
+                        all_volumes[ticker] = volume
+                except Exception as e:
+                    logger.warning(f"Could not extract {ticker} from batch: {e}")
+                    continue
+
+            time.sleep(2)  # pause between batches
+
+        except Exception as e:
+            logger.warning(f"Batch {batch_num + 1} failed: {e}")
+            time.sleep(5)
+            continue
+
+    logger.info(f"Batch download complete. Processing {len(all_closes)} tickers...")
+
+    # Process each ticker's data
+    for ticker, close_prices in all_closes.items():
+        try:
+            volumes = all_volumes.get(ticker, pd.Series(dtype=float))
 
             current_price = float(close_prices.iloc[-1])
             prev_close = float(close_prices.iloc[-2])
@@ -117,8 +178,8 @@ def fetch_stock_data() -> dict:
             weekly_change_pct = ((current_price - week_ago) / week_ago) * 100
             monthly_change_pct = ((current_price - month_ago) / month_ago) * 100
 
-            avg_volume_30d = float(volumes.tail(30).mean())
-            latest_volume = float(volumes.iloc[-1])
+            avg_volume_30d = float(volumes.tail(30).mean()) if len(volumes) > 0 else 0
+            latest_volume = float(volumes.iloc[-1]) if len(volumes) > 0 else 0
             volume_ratio = latest_volume / avg_volume_30d if avg_volume_30d > 0 else 1.0
 
             last_10 = close_prices.tail(11).pct_change().dropna()
@@ -147,6 +208,9 @@ def fetch_stock_data() -> dict:
         except Exception as e:
             logger.warning(f"Error processing {ticker}: {e}")
             continue
+
+    logger.info(f"Successfully fetched data for {len(stock_data)} stocks.")
+    return stock_data
 
     logger.info(f"Successfully fetched data for {len(stock_data)} stocks.")
     return stock_data
