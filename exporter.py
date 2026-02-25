@@ -11,11 +11,40 @@ from datetime import date, timedelta
 logger = logging.getLogger(__name__)
 
 
+def build_full_ranked_list(stock_data: dict) -> list:
+    """
+    Build a full ranked list of all stocks by momentum + volume signal.
+    Used for the downloadable CSV — gives users the complete picture
+    beyond just the top 10 shown on screen.
+    """
+    ranked = []
+    for ticker, d in stock_data.items():
+        # Simple composite score: momentum + volume signal + weekly trend
+        score = (
+            d.get("momentum_score", 50) * 0.4 +
+            min(d.get("volume_ratio", 1.0) * 10, 30) * 0.3 +
+            (d.get("weekly_change_pct", 0) * 2) * 0.3
+        )
+        ranked.append({
+            "ticker": ticker,
+            "current_price": d.get("current_price"),
+            "daily_change_pct": d.get("daily_change_pct"),
+            "weekly_change_pct": d.get("weekly_change_pct"),
+            "monthly_change_pct": d.get("monthly_change_pct"),
+            "volume_ratio": d.get("volume_ratio"),
+            "momentum_score": d.get("momentum_score"),
+            "composite_score": round(score, 2),
+        })
+    ranked.sort(key=lambda x: x["composite_score"], reverse=True)
+    return ranked
+
+
 def build_frontend_json(
     today_predictions: dict,
     yesterday_predictions: dict | None,
     yesterday_actuals: list,
     index_data: dict,
+    stock_data: dict = None,
 ) -> dict:
     """
     Assemble the full JSON payload the frontend needs.
@@ -93,6 +122,7 @@ def build_frontend_json(
             "has_actuals": len(actuals_map) > 0,
         },
         "indices": index_data,
+        "full_ranked_list": build_full_ranked_list(stock_data) if stock_data else [],
     }
 
     return payload

@@ -132,6 +132,7 @@ def run():
         yesterday_predictions=yesterday_predictions,
         yesterday_actuals=yesterday_actuals,
         index_data=index_data,
+        stock_data=stock_data,
     )
 
     success = write_json(payload)
