@@ -1,0 +1,436 @@
+{
+  "generated_at": "2026-02-25T06:00:00-06:00",
+  "today": {
+    "date": "2026-02-25",
+    "market_summary": "Markets face heavy selling pressure from Trump tariff escalation and AI sector rotation fears.",
+    "winners": [
+      {
+        "rank": 1,
+        "ticker": "AMD",
+        "company": "Advanced Micro Devices",
+        "sector": "Technology",
+        "predicted_change_pct": 3.5,
+        "reason": "Strong momentum continuation, massive volume spike"
+      },
+      {
+        "rank": 2,
+        "ticker": "XOM",
+        "company": "Exxon Mobil Corporation",
+        "sector": "Energy",
+        "predicted_change_pct": 2.1,
+        "reason": "Goldman hikes oil price forecast"
+      },
+      {
+        "rank": 3,
+        "ticker": "CVX",
+        "company": "Chevron Corporation",
+        "sector": "Energy",
+        "predicted_change_pct": 1.8,
+        "reason": "Oil price upgrade, strong monthly trend"
+      },
+      {
+        "rank": 4,
+        "ticker": "OXY",
+        "company": "Occidental Petroleum",
+        "sector": "Energy",
+        "predicted_change_pct": 1.7,
+        "reason": "Oil rally, strong weekly momentum"
+      },
+      {
+        "rank": 5,
+        "ticker": "JNJ",
+        "company": "Johnson & Johnson",
+        "sector": "Healthcare",
+        "predicted_change_pct": 1.2,
+        "reason": "Defensive safe haven, low volatility"
+      },
+      {
+        "rank": 6,
+        "ticker": "O",
+        "company": "Realty Income Corporation",
+        "sector": "Real Estate",
+        "predicted_change_pct": 1.0,
+        "reason": "High momentum defensive REIT play"
+      },
+      {
+        "rank": 7,
+        "ticker": "MRNA",
+        "company": "Moderna Inc",
+        "sector": "Healthcare",
+        "predicted_change_pct": 0.9,
+        "reason": "Strong weekly surge, top momentum score"
+      },
+      {
+        "rank": 8,
+        "ticker": "VZ",
+        "company": "Verizon Communications",
+        "sector": "Telecommunications",
+        "predicted_change_pct": 0.8,
+        "reason": "Defensive telecom, strong monthly momentum"
+      },
+      {
+        "rank": 9,
+        "ticker": "MCD",
+        "company": "McDonald's Corporation",
+        "sector": "Consumer Defensive",
+        "predicted_change_pct": 0.7,
+        "reason": "Defensive consumer staple, low volatility"
+      },
+      {
+        "rank": 10,
+        "ticker": "SLB",
+        "company": "Schlumberger Limited",
+        "sector": "Energy",
+        "predicted_change_pct": 0.6,
+        "reason": "Energy sector tailwind, oil upgrade"
+      }
+    ],
+    "losers": [
+      {
+        "rank": 1,
+        "ticker": "DDOG",
+        "company": "Datadog Inc",
+        "sector": "Technology",
+        "predicted_change_pct": -4.2,
+        "reason": "AI loser fears, severe weekly selloff"
+      },
+      {
+        "rank": 2,
+        "ticker": "NET",
+        "company": "Cloudflare Inc",
+        "sector": "Technology",
+        "predicted_change_pct": -3.8,
+        "reason": "Tech selloff, sharp weekly decline continues"
+      },
+      {
+        "rank": 3,
+        "ticker": "SNOW",
+        "company": "Snowflake Inc",
+        "sector": "Technology",
+        "predicted_change_pct": -3.5,
+        "reason": "AI anxiety punishes cloud software stocks"
+      },
+      {
+        "rank": 4,
+        "ticker": "PLTR",
+        "company": "Palantir Technologies",
+        "sector": "Technology",
+        "predicted_change_pct": -3.2,
+        "reason": "AI valuation fears, weak monthly trend"
+      },
+      {
+        "rank": 5,
+        "ticker": "UNH",
+        "company": "UnitedHealth Group",
+        "sector": "Healthcare",
+        "predicted_change_pct": -2.8,
+        "reason": "Continued steep decline, heavy selling pressure"
+      },
+      {
+        "rank": 6,
+        "ticker": "MSFT",
+        "company": "Microsoft Corporation",
+        "sector": "Technology",
+        "predicted_change_pct": -2.5,
+        "reason": "AI loser rotation, weak momentum score"
+      },
+      {
+        "rank": 7,
+        "ticker": "CVS",
+        "company": "CVS Health Corporation",
+        "sector": "Healthcare",
+        "predicted_change_pct": -2.3,
+        "reason": "Bearish momentum, elevated volume selling"
+      },
+      {
+        "rank": 8,
+        "ticker": "CRM",
+        "company": "Salesforce Inc",
+        "sector": "Technology",
+        "predicted_change_pct": -2.1,
+        "reason": "AI anxiety hits enterprise software hard"
+      },
+      {
+        "rank": 9,
+        "ticker": "META",
+        "company": "Meta Platforms Inc",
+        "sector": "Technology",
+        "predicted_change_pct": -1.9,
+        "reason": "Magnificent Seven tariff and AI toll"
+      },
+      {
+        "rank": 10,
+        "ticker": "AXP",
+        "company": "American Express Company",
+        "sector": "Finance",
+        "predicted_change_pct": -1.8,
+        "reason": "High volume selloff, tariff consumer fears"
+      }
+    ]
+  },
+  "yesterday": {
+    "date": "2026-02-24",
+    "winners": [
+      {
+        "rank": 1,
+        "reason": "Strong weekly momentum, defensive rotation",
+        "sector": "Healthcare",
+        "ticker": "MRNA",
+        "company": "Moderna Inc",
+        "predicted_change_pct": 3.8,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 31,
+        "outcome": "miss"
+      },
+      {
+        "rank": 2,
+        "reason": "Goldman oil price hike catalyst",
+        "sector": "Energy",
+        "ticker": "OXY",
+        "company": "Occidental Petroleum",
+        "predicted_change_pct": 2.5,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 38,
+        "outcome": "miss"
+      },
+      {
+        "rank": 3,
+        "reason": "Oil forecast upgrade, strong momentum",
+        "sector": "Energy",
+        "ticker": "XOM",
+        "company": "Exxon Mobil Corporation",
+        "predicted_change_pct": 1.8,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 41,
+        "outcome": "miss"
+      },
+      {
+        "rank": 4,
+        "reason": "Defensive haven amid tariff fears",
+        "sector": "Healthcare",
+        "ticker": "JNJ",
+        "company": "Johnson & Johnson",
+        "predicted_change_pct": 1.5,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 42,
+        "outcome": "miss"
+      },
+      {
+        "rank": 5,
+        "reason": "High momentum defensive telecom play",
+        "sector": "Telecom",
+        "ticker": "VZ",
+        "company": "Verizon Communications",
+        "predicted_change_pct": 1.3,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 44,
+        "outcome": "miss"
+      },
+      {
+        "rank": 6,
+        "reason": "Energy sector oil price tailwind",
+        "sector": "Energy",
+        "ticker": "CVX",
+        "company": "Chevron Corporation",
+        "predicted_change_pct": 1.2,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 44,
+        "outcome": "miss"
+      },
+      {
+        "rank": 7,
+        "reason": "Healthcare defensive momentum continues",
+        "sector": "Healthcare",
+        "ticker": "ABT",
+        "company": "Abbott Laboratories",
+        "predicted_change_pct": 1.1,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 44,
+        "outcome": "miss"
+      },
+      {
+        "rank": 8,
+        "reason": "Strong monthly gain, defensive sector",
+        "sector": "Telecom",
+        "ticker": "T",
+        "company": "AT&T Inc",
+        "predicted_change_pct": 1.0,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 45,
+        "outcome": "miss"
+      },
+      {
+        "rank": 9,
+        "reason": "High momentum, rate-sensitive safe haven",
+        "sector": "Real Estate",
+        "ticker": "O",
+        "company": "Realty Income Corporation",
+        "predicted_change_pct": 0.8,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 46,
+        "outcome": "miss"
+      },
+      {
+        "rank": 10,
+        "reason": "Low volatility defensive consumer staple",
+        "sector": "Consumer Staples",
+        "ticker": "MCD",
+        "company": "McDonald's Corporation",
+        "predicted_change_pct": 0.7,
+        "prediction_type": "winner",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 46,
+        "outcome": "miss"
+      }
+    ],
+    "losers": [
+      {
+        "rank": 1,
+        "reason": "AI loser selloff, heavy volume",
+        "sector": "Technology",
+        "ticker": "DDOG",
+        "company": "Datadog Inc",
+        "predicted_change_pct": -7.5,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 12,
+        "outcome": "miss"
+      },
+      {
+        "rank": 2,
+        "reason": "Cloud tech rout accelerating sharply",
+        "sector": "Technology",
+        "ticker": "NET",
+        "company": "Cloudflare Inc",
+        "predicted_change_pct": -6.2,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 19,
+        "outcome": "miss"
+      },
+      {
+        "rank": 3,
+        "reason": "AI anxiety crushes cloud software",
+        "sector": "Technology",
+        "ticker": "SNOW",
+        "company": "Snowflake Inc",
+        "predicted_change_pct": -5.8,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 21,
+        "outcome": "miss"
+      },
+      {
+        "rank": 4,
+        "reason": "Tariff consumer spending fears intensify",
+        "sector": "Finance",
+        "ticker": "MA",
+        "company": "Mastercard Inc",
+        "predicted_change_pct": -3.5,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 32,
+        "outcome": "miss"
+      },
+      {
+        "rank": 5,
+        "reason": "Extreme volume, consumer spending fear",
+        "sector": "Finance",
+        "ticker": "AXP",
+        "company": "American Express Company",
+        "predicted_change_pct": -3.2,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 34,
+        "outcome": "miss"
+      },
+      {
+        "rank": 6,
+        "reason": "AI loser rotation, weak momentum",
+        "sector": "Technology",
+        "ticker": "CRM",
+        "company": "Salesforce Inc",
+        "predicted_change_pct": -3.0,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 35,
+        "outcome": "miss"
+      },
+      {
+        "rank": 7,
+        "reason": "AI valuation unwind continues heavily",
+        "sector": "Technology",
+        "ticker": "PLTR",
+        "company": "Palantir Technologies",
+        "predicted_change_pct": -2.8,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 36,
+        "outcome": "miss"
+      },
+      {
+        "rank": 8,
+        "reason": "AI capex concerns, tariff pressure",
+        "sector": "Technology",
+        "ticker": "MSFT",
+        "company": "Microsoft Corporation",
+        "predicted_change_pct": -2.5,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 38,
+        "outcome": "miss"
+      },
+      {
+        "rank": 9,
+        "reason": "Financial sector tariff selloff continues",
+        "sector": "Finance",
+        "ticker": "MS",
+        "company": "Morgan Stanley",
+        "predicted_change_pct": -2.4,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 38,
+        "outcome": "miss"
+      },
+      {
+        "rank": 10,
+        "reason": "High volume payment sector weakness",
+        "sector": "Finance",
+        "ticker": "V",
+        "company": "Visa Inc",
+        "predicted_change_pct": -2.2,
+        "prediction_type": "loser",
+        "actual_change_pct": 0.0,
+        "accuracy_score": 39,
+        "outcome": "miss"
+      }
+    ],
+    "has_actuals": true
+  },
+  "indices": {
+    "sp500": {
+      "value": 6890.07,
+      "change_pct": 0.77,
+      "direction": "up"
+    },
+    "nasdaq": {
+      "value": 22863.68,
+      "change_pct": 1.04,
+      "direction": "up"
+    },
+    "dow": {
+      "value": 49174.5,
+      "change_pct": 0.76,
+      "direction": "up"
+    }
+  }
+}
