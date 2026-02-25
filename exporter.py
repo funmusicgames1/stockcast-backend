@@ -107,8 +107,14 @@ def build_frontend_json(
             yesterday_predictions.get("losers", []), "loser"
         )
 
+    from datetime import datetime
+    import pytz
+    cst = pytz.timezone("America/Chicago")
+    now_cst = datetime.now(cst)
+    generated_at = now_cst.strftime("%Y-%m-%dT%H:%M:%S%z")
+
     payload = {
-        "generated_at": date.today().isoformat() + "T06:00:00-06:00",
+        "generated_at": generated_at,
         "today": {
             "date": date.today().isoformat(),
             "market_summary": today_predictions.get("market_summary", ""),
