@@ -145,6 +145,61 @@ def run():
     logger.info("Pipeline completed successfully!")
     logger.info("=" * 60)
 
+    # Push data.json to GitHub frontend repo so Vercel redeploys
+    push_to_github(os.getenv("OUTPUT_JSON_PATH", "./data.json"))
+
+
+def push_to_github(json_path: str) -> bool:
+    """
+    Push data.json to the frontend GitHub repo so Vercel auto-redeploys
+    with fresh predictions after every daily run.
+    """
+    import base64
+    import requests
+
+    token = os.getenv("GITHUB_TOKEN")
+    repo = os.getenv("GITHUB_REPO")  # e.g. funmusicgames1/stockcast-frontend
+
+    if not token or not repo:
+        logger.warning("GITHUB_TOKEN or GITHUB_REPO not set — skipping GitHub push.")
+        return False
+
+    try:
+        with open(json_path, "r") as f:
+            content = f.read()
+
+        encoded = base64.b64encode(content.encode()).decode()
+
+        api_url = f"https://api.github.com/repos/{repo}/contents/data.json"
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+
+        # Check if file already exists (need SHA to update)
+        get_resp = requests.get(api_url, headers=headers)
+        sha = get_resp.json().get("sha") if get_resp.status_code == 200 else None
+
+        payload = {
+            "message": f"Update predictions {date.today().isoformat()}",
+            "content": encoded,
+        }
+        if sha:
+            payload["sha"] = sha
+
+        put_resp = requests.put(api_url, headers=headers, json=payload)
+
+        if put_resp.status_code in (200, 201):
+            logger.info("data.json pushed to GitHub frontend repo successfully.")
+            return True
+        else:
+            logger.error(f"GitHub push failed: {put_resp.status_code} {put_resp.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"GitHub push error: {e}")
+        return False
+
 
 if __name__ == "__main__":
     run()
