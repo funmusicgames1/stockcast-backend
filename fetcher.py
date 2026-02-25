@@ -218,33 +218,59 @@ def fetch_stock_data() -> dict:
 
 def fetch_actual_prices(tickers: list, date_str: str) -> dict:
     """
-    Fetch actual closing prices for a specific date.
-    Used the next day to calculate prediction accuracy.
-
-    Args:
-        tickers: list of ticker symbols
-        date_str: date in YYYY-MM-DD format
-
-    Returns:
-        dict of {ticker: actual_close_price}
+    Fetch actual closing prices for a specific date using batch download.
+    Returns the closing price on or nearest to date_str for each ticker.
     """
-    logger.info(f"Fetching actual prices for {date_str}...")
+    logger.info(f"Fetching actual prices for {date_str} ({len(tickers)} tickers)...")
 
     target = datetime.strptime(date_str, "%Y-%m-%d")
-    start = (target - timedelta(days=3)).strftime("%Y-%m-%d")
+    # Fetch a 5-day window around the target date to handle weekends/holidays
+    start = (target - timedelta(days=4)).strftime("%Y-%m-%d")
     end = (target + timedelta(days=2)).strftime("%Y-%m-%d")
 
     actuals = {}
-    for ticker in tickers:
-        try:
-            t = yf.Ticker(ticker)
-            df = t.history(start=start, end=end, auto_adjust=True)
-            df = df.dropna(subset=["Close"])
-            if df.empty:
+    try:
+        raw = yf.download(
+            tickers=" ".join(tickers),
+            start=start,
+            end=end,
+            auto_adjust=True,
+            progress=False,
+            threads=True,
+            group_by="ticker",
+        )
+
+        if raw.empty:
+            logger.warning("Batch actual prices download returned empty.")
+            return actuals
+
+        for ticker in tickers:
+            try:
+                if len(tickers) == 1:
+                    close = raw["Close"].dropna()
+                else:
+                    if ticker not in raw.columns.get_level_values(0):
+                        continue
+                    close = raw[ticker]["Close"].dropna()
+
+                if close.empty:
+                    continue
+
+                # Find the price on or before the target date
+                close.index = close.index.tz_localize(None) if close.index.tzinfo else close.index
+                target_naive = target.replace(tzinfo=None)
+                available = close[close.index <= target_naive + timedelta(days=1)]
+
+                if available.empty:
+                    continue
+
+                actuals[ticker] = round(float(available.iloc[-1]), 2)
+
+            except Exception as e:
+                logger.warning(f"Could not extract actual price for {ticker}: {e}")
                 continue
-            actuals[ticker] = round(float(df["Close"].iloc[-1]), 2)
-        except Exception as e:
-            logger.warning(f"Failed to fetch actual price for {ticker}: {e}")
-            continue
+
+    except Exception as e:
+        logger.warning(f"Batch actual prices download failed: {e}")
 
     return actuals
