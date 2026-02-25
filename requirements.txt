@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 requests==2.31.0
 pandas==2.2.1
 pytz==2024.1
+cryptography
