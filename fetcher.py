@@ -11,32 +11,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Universe of stocks to consider — mix of large cap, mid cap, volatile names
+# Universe of stocks to consider — broad coverage across all major sectors
 # The AI will pick the top 10 expected winners and losers from this pool
 STOCK_UNIVERSE = [
     # Mega cap tech
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA",
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "ORCL", "IBM", "ADBE",
     # Semiconductors
-    "AMD", "INTC", "QCOM", "AVGO", "MU", "AMAT",
-    # Finance
-    "JPM", "BAC", "GS", "MS", "V", "MA", "AXP",
-    # Healthcare / Pharma
-    "JNJ", "PFE", "MRNA", "UNH", "CVS", "ABT",
-    # Consumer
-    "AMZN", "WMT", "TGT", "COST", "MCD", "SBUX", "NKE",
+    "AMD", "INTC", "QCOM", "AVGO", "MU", "AMAT", "LRCX", "KLAC", "MRVL", "NXPI", "TXN", "ADI",
+    # Large cap finance / banking
+    "JPM", "BAC", "GS", "MS", "V", "MA", "AXP", "WFC", "C", "BLK", "SCHW", "COF",
+    # Fintech / Capital Markets (HOOD sector)
+    "HOOD", "SOFI", "COIN", "UPST", "AFRM", "NU", "PYPL", "SQ", "ADYEY", "BILL",
+    # Healthcare / Pharma / Biotech
+    "JNJ", "PFE", "MRNA", "UNH", "CVS", "ABT", "LLY", "MRK", "BMY", "GILD",
+    "AMGN", "REGN", "VRTX", "BIIB", "ILMN", "DXCM", "ISRG", "HCA", "CI", "HUM",
+    # Consumer staples
+    "WMT", "TGT", "COST", "MCD", "SBUX", "NKE", "PG", "KO", "PEP", "MDLZ",
+    "CL", "GIS", "K", "HSY", "MO",
+    # Consumer discretionary
+    "AMZN", "HD", "LOW", "TJX", "BKNG", "MAR", "HLT", "F", "GM", "RIVN",
+    "LCID", "NIO", "LI", "XPEV", "CVNA",
     # Energy
-    "XOM", "CVX", "OXY", "SLB",
-    # Industrial / Aerospace
-    "BA", "GE", "CAT", "HON",
-    # Media / Telecom
-    "DIS", "NFLX", "T", "VZ", "CMCSA",
-    # Retail / Other
-    "WBA", "M", "GME", "AMC",
-    # AI / Cloud
-    "PLTR", "CRM", "SNOW", "DDOG", "NET",
+    "XOM", "CVX", "OXY", "SLB", "COP", "EOG", "PSX", "VLO", "MPC", "HAL",
+    # AI Infrastructure / Bitcoin Mining (IREN sector)
+    "IREN", "CORZ", "MARA", "CLSK", "RIOT", "HUT", "BTBT", "CIFR",
+    # Industrial / Aerospace / Defense
+    "BA", "GE", "CAT", "HON", "LMT", "RTX", "NOC", "GD", "MMM", "EMR",
+    "DE", "ITW", "ETN", "PH", "ROK",
+    # Aerospace / Space Technology (RKLB sector)
+    "RKLB", "LUNR", "RDW", "ASTS", "MNTS", "SPCE",
+    # Media / Telecom / Entertainment
+    "DIS", "NFLX", "T", "VZ", "CMCSA", "WBD", "PARA", "SONY", "SPOT", "TTWO",
+    "EA", "ATVI", "LYV",
+    # AI / Cloud / SaaS
+    "PLTR", "CRM", "SNOW", "DDOG", "NET", "MDB", "GTLB", "ZS", "PANW", "CRWD",
+    "NOW", "WDAY", "VEEV", "HUBS", "TEAM", "OKTA", "ZM", "DOCN", "ESTC",
+    # E-commerce / Retail tech
+    "SHOP", "ETSY", "EBAY", "WISH", "POSHM",
     # REITs
-    "MPW", "O", "AMT",
+    "MPW", "O", "AMT", "PLD", "EQIX", "CCI", "SBAC", "WELL", "SPG", "AVB",
+    # Materials / Chemicals
+    "LIN", "APD", "ECL", "DD", "NEM", "FCX", "AA", "X", "CLF",
+    # Transportation / Logistics
+    "UPS", "FDX", "DAL", "UAL", "AAL", "LUV", "UBER", "LYFT", "DASH",
+    # Small / mid cap high volatility
+    "GME", "AMC", "BBBY", "KOSS", "EXPR",
+    # Biotech high volatility
+    "SAVA", "SRPT", "RARE", "EXAS", "PACB", "BEAM", "EDIT", "NTLA",
 ]
+# Deduplicate
+STOCK_UNIVERSE = list(dict.fromkeys(STOCK_UNIVERSE))
 # Deduplicate
 STOCK_UNIVERSE = list(dict.fromkeys(STOCK_UNIVERSE))
 
