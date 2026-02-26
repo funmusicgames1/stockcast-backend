@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install dependencies
-        run: pip install --prefer-binary --timeout=120 -r requirements.txt
+        run: pip install --prefer-binary --only-binary=numpy,pandas,cryptography -r requirements.txt
 
       - name: Run pipeline
         env:
