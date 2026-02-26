@@ -18,14 +18,12 @@ logger = logging.getLogger(__name__)
 try:
     from curl_cffi import requests as curl_requests
     _SESSION = curl_requests.Session(impersonate="chrome110")
+    # Inject session into yfinance's shared cache
+    yf.utils.get_json.__globals__['session'] = _SESSION
     logger.info("Using curl_cffi Chrome impersonation session")
-except ImportError:
-    import requests as std_requests
-    _SESSION = std_requests.Session()
-    _SESSION.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    })
-    logger.warning("curl_cffi not available, falling back to requests session")
+except Exception as e:
+    _SESSION = None
+    logger.warning(f"curl_cffi session setup failed: {e}, using default yfinance session")
 
 yf.set_tz_cache_location("/tmp/yfinance_cache")
 
@@ -146,7 +144,6 @@ def fetch_stock_data() -> dict:
                 progress=False,
                 threads=False,
                 group_by="ticker",
-                session=_SESSION,
             )
 
             if raw.empty:
@@ -259,7 +256,6 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
             progress=False,
             threads=False,
             group_by="ticker",
-            session=_SESSION,
         )
 
         if raw.empty:
