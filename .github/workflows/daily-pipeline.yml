@@ -39,6 +39,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           FRONTEND_REPO: ${{ secrets.FRONTEND_REPO }}
           OUTPUT_JSON_PATH: ./data.json
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}

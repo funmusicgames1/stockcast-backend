@@ -45,40 +45,31 @@ def build_frontend_json(
     yesterday_actuals: list,
     index_data: dict,
     stock_data: dict = None,
+    claude_predictions: dict | None = None,
+    gemini_predictions: dict | None = None,
 ) -> dict:
     """
     Assemble the full JSON payload the frontend needs.
-
-    Args:
-        today_predictions: today's winner/loser predictions from AI
-        yesterday_predictions: yesterday's predictions (for performance section)
-        yesterday_actuals: actual % changes fetched after market close
-        index_data: S&P 500, NASDAQ, DOW snapshot (from yfinance)
-
-    Returns:
-        dict ready to serialize as data.json
+    Includes separate claude and gemini prediction sets for model comparison.
     """
 
     # Build actuals lookup
     actuals_map = {a["ticker"]: a["actual_change_pct"] for a in yesterday_actuals}
 
-    # Enrich yesterday's predictions with actual results
     def enrich_with_actuals(entries: list, prediction_type: str) -> list:
         enriched = []
         for entry in entries:
-            ticker = entry["ticker"]
-            actual = actuals_map.get(ticker)
+            ticker   = entry["ticker"]
+            actual   = actuals_map.get(ticker)
             accuracy = None
 
             if actual is not None:
-                predicted = entry["predicted_change_pct"]
-                # Accuracy: direction correct = 50 pts base,
-                # magnitude closeness = up to 50 pts
+                predicted         = entry["predicted_change_pct"]
                 direction_correct = (predicted > 0 and actual > 0) or (predicted < 0 and actual < 0)
                 if direction_correct:
-                    diff = abs(abs(predicted) - abs(actual))
+                    diff           = abs(abs(predicted) - abs(actual))
                     magnitude_score = max(0, 50 - (diff * 10))
-                    accuracy = round(50 + magnitude_score)
+                    accuracy       = round(50 + magnitude_score)
                 else:
                     accuracy = max(0, round(50 - abs(actual - predicted) * 5))
 
@@ -96,38 +87,46 @@ def build_frontend_json(
             })
         return enriched
 
-    yesterday_winners_enriched = []
-    yesterday_losers_enriched = []
-
-    if yesterday_predictions:
-        yesterday_winners_enriched = enrich_with_actuals(
-            yesterday_predictions.get("winners", []), "winner"
-        )
-        yesterday_losers_enriched = enrich_with_actuals(
-            yesterday_predictions.get("losers", []), "loser"
-        )
+    # Enrich yesterday for each model separately
+    def build_yesterday_block(preds: dict | None) -> dict:
+        if not preds:
+            return {"winners": [], "losers": [], "has_actuals": False}
+        return {
+            "date":        (date.today() - timedelta(days=1)).isoformat(),
+            "winners":     enrich_with_actuals(preds.get("winners", []), "winner"),
+            "losers":      enrich_with_actuals(preds.get("losers",  []), "loser"),
+            "has_actuals": len(actuals_map) > 0,
+        }
 
     from datetime import datetime
     import pytz
-    cst = pytz.timezone("America/Chicago")
-    now_cst = datetime.now(cst)
+    cst      = pytz.timezone("America/Chicago")
+    now_cst  = datetime.now(cst)
     generated_at = now_cst.strftime("%Y-%m-%dT%H:%M:%S%z")
 
     payload = {
         "generated_at": generated_at,
         "today": {
             "date": date.today().isoformat(),
-            "market_summary": today_predictions.get("market_summary", ""),
-            "winners": today_predictions.get("winners", []),
-            "losers": today_predictions.get("losers", []),
+            "claude": {
+                "market_summary": claude_predictions.get("market_summary", "") if claude_predictions else None,
+                "winners":        claude_predictions.get("winners", [])         if claude_predictions else [],
+                "losers":         claude_predictions.get("losers",  [])         if claude_predictions else [],
+                "available":      claude_predictions is not None,
+            },
+            "gemini": {
+                "market_summary": gemini_predictions.get("market_summary", "") if gemini_predictions else None,
+                "winners":        gemini_predictions.get("winners", [])         if gemini_predictions else [],
+                "losers":         gemini_predictions.get("losers",  [])         if gemini_predictions else [],
+                "available":      gemini_predictions is not None,
+            },
         },
         "yesterday": {
-            "date": (date.today() - timedelta(days=1)).isoformat(),
-            "winners": yesterday_winners_enriched,
-            "losers": yesterday_losers_enriched,
-            "has_actuals": len(actuals_map) > 0,
+            "date":   (date.today() - timedelta(days=1)).isoformat(),
+            "claude": build_yesterday_block(yesterday_predictions),
+            "gemini": build_yesterday_block(yesterday_predictions),  # same actuals, different predictions will be stored later
         },
-        "indices": index_data,
+        "indices":          index_data,
         "full_ranked_list": build_full_ranked_list(stock_data) if stock_data else [],
     }
 

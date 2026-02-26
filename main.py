@@ -1,15 +1,15 @@
 """
-main.py — Orchestrates the full MarketPulse daily pipeline.
+main.py — Orchestrates the full StockCast daily pipeline.
 
 Flow:
-1. Fetch stock price data (yfinance)
+1. Fetch stock price data (Yahoo Finance v8 API + FMP fallback)
 2. Fetch news & sentiment (NewsAPI)
-3. Run AI analysis (Anthropic Claude)
+3. Run AI analysis (Claude + Gemini in parallel)
 4. Save predictions to Supabase
 5. Fetch yesterday's actual prices and save accuracy data
 6. Export data.json for the frontend
 
-This script is triggered daily at 6:00 AM CST by Railway cron.
+This script is triggered daily at 6:00 AM CST by GitHub Actions cron.
 """
 
 import os
@@ -32,7 +32,7 @@ logger = logging.getLogger("main")
 
 def run():
     logger.info("=" * 60)
-    logger.info("MarketPulse daily pipeline starting...")
+    logger.info("StockCast daily pipeline starting...")
     logger.info(f"Date: {date.today().isoformat()}")
     logger.info("=" * 60)
 
@@ -41,10 +41,14 @@ def run():
     # ----------------------------------------------------------------
     logger.info("Step 1/6: Fetching stock data...")
     from fetcher import fetch_stock_data, fetch_actual_prices
-    stock_data = fetch_stock_data()
+    try:
+        stock_data = fetch_stock_data()
+    except RuntimeError as e:
+        logger.error(str(e))
+        sys.exit(1)
 
     if len(stock_data) < 20:
-        logger.error(f"Only {len(stock_data)} stocks fetched — possible rate limit. Aborting pipeline.")
+        logger.error(f"Only {len(stock_data)} stocks fetched — aborting pipeline.")
         sys.exit(1)
 
     logger.info(f"Got data for {len(stock_data)} stocks.")
@@ -58,24 +62,33 @@ def run():
     logger.info(f"Got {len(news.get('macro', []))} macro headlines.")
 
     # ----------------------------------------------------------------
-    # STEP 3: AI analysis
+    # STEP 3: AI analysis (Claude + Gemini)
     # ----------------------------------------------------------------
-    logger.info("Step 3/6: Running AI analysis...")
+    logger.info("Step 3/6: Running AI analysis (Claude + Gemini)...")
     from analyzer import analyze
-    predictions = analyze(stock_data, news)
+    model_predictions = analyze(stock_data, news)
 
-    if not predictions:
-        logger.error("AI analysis failed. Aborting pipeline.")
+    if not model_predictions:
+        logger.error("All AI models failed. Aborting pipeline.")
         sys.exit(1)
 
-    logger.info(f"Got {len(predictions['winners'])} winners, {len(predictions['losers'])} losers.")
+    claude_predictions = model_predictions.get("claude")
+    gemini_predictions = model_predictions.get("gemini")
+
+    if claude_predictions:
+        logger.info(f"[Claude] {len(claude_predictions['winners'])} winners, {len(claude_predictions['losers'])} losers.")
+    if gemini_predictions:
+        logger.info(f"[Gemini] {len(gemini_predictions['winners'])} winners, {len(gemini_predictions['losers'])} losers.")
+
+    # Use whichever model succeeded for DB save (prefer Claude)
+    primary_predictions = claude_predictions or gemini_predictions
 
     # ----------------------------------------------------------------
     # STEP 4: Save today's predictions to Supabase
     # ----------------------------------------------------------------
     logger.info("Step 4/6: Saving predictions to database...")
     from database import save_predictions, get_predictions_for_date, get_actuals_for_date, save_actuals
-    saved = save_predictions(predictions)
+    saved = save_predictions(primary_predictions)
     if not saved:
         logger.warning("Failed to save predictions — continuing anyway.")
 
@@ -83,33 +96,28 @@ def run():
     # STEP 5: Fetch yesterday's actuals and calculate accuracy
     # ----------------------------------------------------------------
     logger.info("Step 5/6: Fetching yesterday's actual results...")
-    yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+    yesterday_str        = (date.today() - timedelta(days=1)).isoformat()
     yesterday_predictions = get_predictions_for_date(yesterday_str)
-    yesterday_actuals = []
+    yesterday_actuals    = []
 
     if yesterday_predictions:
-        # Get all tickers from yesterday's predictions
         all_tickers = (
             [e["ticker"] for e in yesterday_predictions.get("winners", [])] +
-            [e["ticker"] for e in yesterday_predictions.get("losers", [])]
+            [e["ticker"] for e in yesterday_predictions.get("losers",  [])]
         )
 
         if all_tickers:
-            # Fetch a wider window to get both yesterday and the day before
-            # Use 5 days back to handle weekends (Mon predictions need Fri as prev close)
             from datetime import timedelta as td
-            yesterday_dt = date.today() - td(days=1)
-            day_before_dt = date.today() - td(days=2)
+            day_before_str = (date.today() - td(days=2)).isoformat()
 
             actual_prices = fetch_actual_prices(all_tickers, yesterday_str)
-            day_before_str = day_before_dt.isoformat()
-            prev_prices = fetch_actual_prices(all_tickers, day_before_str)
+            prev_prices   = fetch_actual_prices(all_tickers, day_before_str)
 
-            # If yesterday was Monday, prev should be Friday — fetch up to 5 days back
+            # Weekend fallback — if yesterday was Monday, prev should be Friday
             if not prev_prices:
                 for days_back in range(3, 7):
                     fallback_str = (date.today() - td(days=days_back)).isoformat()
-                    prev_prices = fetch_actual_prices(all_tickers, fallback_str)
+                    prev_prices  = fetch_actual_prices(all_tickers, fallback_str)
                     if prev_prices:
                         logger.info(f"Using {fallback_str} as previous close (weekend fallback).")
                         break
@@ -122,11 +130,7 @@ def run():
                         actuals_pct[ticker] = round(pct, 2)
                         logger.info(f"  {ticker}: prev={prev_prices[ticker]}, actual={actual_prices[ticker]}, change={actuals_pct[ticker]:+.2f}%")
 
-            # Save actuals to DB
-            actuals_list = [
-                {"ticker": t, "actual_change_pct": pct}
-                for t, pct in actuals_pct.items()
-            ]
+            actuals_list      = [{"ticker": t, "actual_change_pct": pct} for t, pct in actuals_pct.items()]
             yesterday_actuals = actuals_list
             save_actuals(yesterday_str, actuals_pct, yesterday_predictions)
             logger.info(f"Saved actuals for {len(actuals_pct)} tickers.")
@@ -140,12 +144,14 @@ def run():
     from exporter import build_frontend_json, write_json, fetch_index_data
 
     index_data = fetch_index_data()
-    payload = build_frontend_json(
-        today_predictions=predictions,
-        yesterday_predictions=yesterday_predictions,
-        yesterday_actuals=yesterday_actuals,
-        index_data=index_data,
-        stock_data=stock_data,
+    payload    = build_frontend_json(
+        today_predictions      = primary_predictions,
+        yesterday_predictions  = yesterday_predictions,
+        yesterday_actuals      = yesterday_actuals,
+        index_data             = index_data,
+        stock_data             = stock_data,
+        claude_predictions     = claude_predictions,
+        gemini_predictions     = gemini_predictions,
     )
 
     success = write_json(payload)
@@ -162,11 +168,11 @@ def run():
     # Push data.json to GitHub frontend repo so Vercel redeploys
     push_to_github(os.getenv("OUTPUT_JSON_PATH", "./data.json"))
 
-    # Send push notification to all subscribed devices
+    # Send push notification (use primary predictions)
     from notify import send_prediction_notification
     send_prediction_notification(
-        winners=predictions.get("winners", []),
-        losers=predictions.get("losers", [])
+        winners=primary_predictions.get("winners", []),
+        losers=primary_predictions.get("losers",  [])
     )
 
 

@@ -1,20 +1,18 @@
 """
-analyzer.py — Sends stock data + news to Anthropic Claude and gets back
-structured predictions for top 10 winners and top 10 losers.
+analyzer.py — Runs AI analysis using both Claude and Gemini in parallel.
+Returns separate prediction sets for each model.
 """
 
 import os
 import json
 import logging
-import anthropic
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
 
 def build_prompt(stock_data: dict, news: dict) -> str:
-    """Build the analysis prompt with all market data and news context."""
-
-    # Summarize stock data compactly
+    """Build the shared analysis prompt for both models."""
     stock_lines = []
     for ticker, d in stock_data.items():
         stock_lines.append(
@@ -26,11 +24,9 @@ def build_prompt(stock_data: dict, news: dict) -> str:
             f"momentum={d['momentum_score']:.0f}/100"
         )
 
-    stocks_block = "\n".join(stock_lines)
-
+    stocks_block    = "\n".join(stock_lines)
     macro_headlines = "\n".join(f"- {h}" for h in news.get("macro", [])[:15])
-
-    sector_blocks = ""
+    sector_blocks   = ""
     for sector, headlines in news.get("sector", {}).items():
         if headlines:
             sector_blocks += f"\n{sector.upper()}:\n"
@@ -99,54 +95,104 @@ Rules:
     return prompt
 
 
-def analyze(stock_data: dict, news: dict) -> dict | None:
-    """
-    Run AI analysis and return structured prediction dict.
-    Returns None if analysis fails.
-    """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        logger.error("ANTHROPIC_API_KEY not set.")
+def _parse_response(raw: str) -> dict | None:
+    """Strip markdown fences and parse JSON response."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        predictions = json.loads(raw)
+        assert "winners" in predictions and len(predictions["winners"]) == 10
+        assert "losers"  in predictions and len(predictions["losers"])  == 10
+        return predictions
+    except (json.JSONDecodeError, AssertionError) as e:
+        logger.error(f"Parse/validation failed: {e}")
         return None
 
-    client = anthropic.Anthropic(api_key=api_key)
 
-    prompt = build_prompt(stock_data, news)
-    logger.info("Sending analysis request to Claude...")
-
+def _run_claude(prompt: str) -> dict | None:
+    """Call Anthropic Claude API and return parsed predictions."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.error("ANTHROPIC_API_KEY not set — skipping Claude")
+        return None
     try:
+        import anthropic
+        client  = anthropic.Anthropic(api_key=api_key)
+        logger.info("[Claude] Sending request...")
         message = client.messages.create(
             model="claude-opus-4-6",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
-
-        raw_response = message.content[0].text.strip()
-        logger.info("Received response from Claude.")
-
-        # Strip markdown code fences if present
-        if raw_response.startswith("```"):
-            raw_response = raw_response.split("```")[1]
-            if raw_response.startswith("json"):
-                raw_response = raw_response[4:]
-            raw_response = raw_response.strip()
-
-        predictions = json.loads(raw_response)
-
-        # Validate structure
-        assert "winners" in predictions and len(predictions["winners"]) == 10
-        assert "losers" in predictions and len(predictions["losers"]) == 10
-
-        logger.info("Predictions parsed and validated successfully.")
-        return predictions
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Claude response as JSON: {e}")
-        logger.error(f"Raw response: {raw_response[:500]}")
-        return None
-    except AssertionError:
-        logger.error("Claude response missing required fields or wrong count.")
-        return None
+        raw = message.content[0].text
+        logger.info("[Claude] Response received.")
+        result = _parse_response(raw)
+        if result:
+            result["model"] = "claude"
+        return result
     except Exception as e:
-        logger.error(f"Anthropic API call failed: {e}")
+        logger.error(f"[Claude] API call failed: {e}")
         return None
+
+
+def _run_gemini(prompt: str) -> dict | None:
+    """Call Google Gemini API and return parsed predictions."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        logger.error("GEMINI_API_KEY not set — skipping Gemini")
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model  = genai.GenerativeModel("gemini-2.0-flash")
+        logger.info("[Gemini] Sending request...")
+        resp   = model.generate_content(prompt)
+        raw    = resp.text
+        logger.info("[Gemini] Response received.")
+        result = _parse_response(raw)
+        if result:
+            result["model"] = "gemini"
+        return result
+    except Exception as e:
+        logger.error(f"[Gemini] API call failed: {e}")
+        return None
+
+
+def analyze(stock_data: dict, news: dict) -> dict | None:
+    """
+    Run AI analysis using both Claude and Gemini in parallel.
+    Returns {"claude": {...}, "gemini": {...}}.
+    At least one model must succeed — otherwise returns None to abort pipeline.
+    """
+    prompt = build_prompt(stock_data, news)
+
+    # Run both models concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_claude = executor.submit(_run_claude, prompt)
+        future_gemini = executor.submit(_run_gemini, prompt)
+        claude_result = future_claude.result()
+        gemini_result = future_gemini.result()
+
+    if claude_result:
+        logger.info("[Claude] Predictions parsed and validated.")
+    else:
+        logger.warning("[Claude] Failed — will be absent from output.")
+
+    if gemini_result:
+        logger.info("[Gemini] Predictions parsed and validated.")
+    else:
+        logger.warning("[Gemini] Failed — will be absent from output.")
+
+    # Abort only if BOTH models fail
+    if not claude_result and not gemini_result:
+        logger.error("Both Claude and Gemini failed. Aborting pipeline.")
+        return None
+
+    return {
+        "claude": claude_result,
+        "gemini": gemini_result,
+    }
