@@ -10,6 +10,21 @@ from datetime import datetime, timedelta
 import logging
 import time
 import random
+import requests
+
+logger = logging.getLogger(__name__)
+
+# Spoof a real browser user agent to avoid Yahoo Finance rate limiting
+# GitHub Actions IPs are commonly blocked — this helps bypass that
+_SESSION = requests.Session()
+_SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+})
+yf.set_tz_cache_location("/tmp/yfinance_cache")
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +123,12 @@ def fetch_stock_data() -> dict:
 
     stock_data = {}
 
-    # Split into batches of 50 to avoid oversized requests
-    batch_size = 50
+    # Brief warm-up pause — GitHub Actions IPs get blocked on instant requests
+    logger.info("Warming up connection to Yahoo Finance...")
+    time.sleep(3)
+
+    # Split into batches of 40 to avoid oversized requests
+    batch_size = 40
     batches = [STOCK_UNIVERSE[i:i+batch_size] for i in range(0, len(STOCK_UNIVERSE), batch_size)]
 
     all_closes = {}
@@ -124,8 +143,9 @@ def fetch_stock_data() -> dict:
                 end=end_str,
                 auto_adjust=True,
                 progress=False,
-                threads=True,
+                threads=False,
                 group_by="ticker",
+                session=_SESSION,
             )
 
             if raw.empty:
@@ -155,7 +175,7 @@ def fetch_stock_data() -> dict:
                     logger.warning(f"Could not extract {ticker} from batch: {e}")
                     continue
 
-            time.sleep(2)  # pause between batches
+            time.sleep(4 + random.uniform(0, 2))  # pause between batches with jitter
 
         except Exception as e:
             logger.warning(f"Batch {batch_num + 1} failed: {e}")
@@ -236,8 +256,9 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
             end=end,
             auto_adjust=True,
             progress=False,
-            threads=True,
+            threads=False,
             group_by="ticker",
+            session=_SESSION,
         )
 
         if raw.empty:
