@@ -140,23 +140,42 @@ def _run_claude(prompt: str) -> dict | None:
 
 
 def _run_gemini(prompt: str) -> dict | None:
-    """Call Google Gemini API and return parsed predictions."""
+    """Call Google Gemini API and return parsed predictions. Retries once on 429."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.error("GEMINI_API_KEY not set — skipping Gemini")
         return None
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model  = genai.GenerativeModel("gemini-2.0-flash")
-        logger.info("[Gemini] Sending request...")
-        resp   = model.generate_content(prompt)
-        raw    = resp.text
-        logger.info("[Gemini] Response received.")
-        result = _parse_response(raw)
-        if result:
-            result["model"] = "gemini"
-        return result
+        import time
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=api_key)
+
+        for attempt in range(3):  # up to 3 attempts
+            try:
+                logger.info(f"[Gemini] Sending request (attempt {attempt + 1})...")
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash-001",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=2048,
+                    )
+                )
+                raw = response.text
+                logger.info("[Gemini] Response received.")
+                result = _parse_response(raw)
+                if result:
+                    result["model"] = "gemini"
+                return result
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str and attempt < 2:
+                    wait = 30 * (attempt + 1)
+                    logger.warning(f"[Gemini] Rate limited (429). Waiting {wait}s before retry...")
+                    time.sleep(wait)
+                else:
+                    raise
     except Exception as e:
         logger.error(f"[Gemini] API call failed: {e}")
         return None

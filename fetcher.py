@@ -47,7 +47,7 @@ STOCK_UNIVERSE = [
     # Large cap finance / banking
     "JPM", "BAC", "GS", "MS", "V", "MA", "AXP", "WFC", "C", "BLK", "SCHW", "COF",
     # Fintech / Capital Markets
-    "HOOD", "SOFI", "COIN", "UPST", "AFRM", "NU", "PYPL", "SQ", "BILL",
+    "HOOD", "SOFI", "COIN", "UPST", "AFRM", "NU", "PYPL", "BILL",
     # Healthcare / Pharma / Biotech
     "JNJ", "PFE", "MRNA", "UNH", "CVS", "ABT", "LLY", "MRK", "BMY", "GILD",
     "AMGN", "REGN", "VRTX", "BIIB", "DXCM", "ISRG", "HCA", "CI", "HUM",
