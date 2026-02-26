@@ -162,6 +162,13 @@ def run():
     # Push data.json to GitHub frontend repo so Vercel redeploys
     push_to_github(os.getenv("OUTPUT_JSON_PATH", "./data.json"))
 
+    # Send push notification to all subscribed devices
+    from notify import send_prediction_notification
+    send_prediction_notification(
+        winners=predictions.get("winners", []),
+        losers=predictions.get("losers", [])
+    )
+
 
 def push_to_github(json_path: str) -> bool:
     """
@@ -172,10 +179,10 @@ def push_to_github(json_path: str) -> bool:
     import requests
 
     token = os.getenv("GITHUB_TOKEN")
-    repo = os.getenv("GITHUB_REPO")  # e.g. funmusicgames1/stockcast-frontend
+    repo = os.getenv("FRONTEND_REPO")  # e.g. funmusicgames1/stockcast-frontend
 
     if not token or not repo:
-        logger.warning("GITHUB_TOKEN or GITHUB_REPO not set — skipping GitHub push.")
+        logger.warning("GITHUB_TOKEN or FRONTEND_REPO not set — skipping GitHub push.")
         return False
 
     try:
