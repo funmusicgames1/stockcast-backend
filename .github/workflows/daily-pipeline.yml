@@ -28,7 +28,7 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: pip install --no-deps -r requirements.txt
+        run: pip install --prefer-binary -r requirements.txt
 
       - name: Run pipeline
         env:
