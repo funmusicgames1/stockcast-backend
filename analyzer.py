@@ -23,8 +23,7 @@ def build_prompt(stock_data: dict, news: dict) -> str:
             f"1w={d['weekly_change_pct']:+.1f}%, "
             f"1m={d['monthly_change_pct']:+.1f}%, "
             f"vol_ratio={d['volume_ratio']:.1f}x, "
-            f"momentum={d['momentum_score']:.0f}/100, "
-            f"volatility={d['volatility_30d']:.1f}%"
+            f"momentum={d['momentum_score']:.0f}/100"
         )
 
     stocks_block = "\n".join(stock_lines)
@@ -40,7 +39,7 @@ def build_prompt(stock_data: dict, news: dict) -> str:
     prompt = f"""You are a quantitative stock market analyst. Based on the following market data and news, predict which stocks are most likely to move significantly today.
 
 === STOCK UNIVERSE DATA ===
-(Format: ticker: current price, 1-day change, 1-week change, 1-month change, volume ratio vs 30d avg, momentum score 0-100, 30d volatility)
+(Format: ticker: current price, 1-day change, 1-week change, 1-month change, volume ratio vs 30d avg, momentum score 0-100)
 
 {stocks_block}
 
