@@ -10,23 +10,24 @@ from datetime import datetime, timedelta
 import logging
 import time
 import random
-import requests
 
 logger = logging.getLogger(__name__)
 
-# Spoof a real browser user agent to avoid Yahoo Finance rate limiting
-# GitHub Actions IPs are commonly blocked — this helps bypass that
-_SESSION = requests.Session()
-_SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-})
+# Use curl_cffi to impersonate a real Chrome browser at TLS level
+# This bypasses Yahoo Finance's bot detection on cloud IPs (GitHub Actions, Railway, etc.)
+try:
+    from curl_cffi import requests as curl_requests
+    _SESSION = curl_requests.Session(impersonate="chrome110")
+    logger.info("Using curl_cffi Chrome impersonation session")
+except ImportError:
+    import requests as std_requests
+    _SESSION = std_requests.Session()
+    _SESSION.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    })
+    logger.warning("curl_cffi not available, falling back to requests session")
+
 yf.set_tz_cache_location("/tmp/yfinance_cache")
-
-logger = logging.getLogger(__name__)
 
 # Rate limiting config — prevents Yahoo Finance from blocking requests
 DELAY_BETWEEN_TICKERS = 0.3   # seconds between each ticker

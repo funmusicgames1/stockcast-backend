@@ -1,4 +1,4 @@
-yfinance==0.2.36
+yfinance>=0.2.50
 anthropic==0.25.0
 supabase==2.4.2
 newsapi-python==0.2.7
@@ -7,3 +7,4 @@ requests==2.31.0
 pandas==2.2.1
 pytz==2024.1
 cryptography
+curl_cffi
