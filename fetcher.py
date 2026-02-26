@@ -153,12 +153,40 @@ def _fetch_yf(ticker: str, days: int = 90) -> dict | None:
 
 
 # ── Fallback source: Financial Modeling Prep ──────────────────────────────────
+def _fetch_fmp_single(ticker: str, fmp_key: str) -> dict | None:
+    """
+    Fetch a single ticker quote from FMP.
+    Used when bulk endpoint returns 403 (free tier restriction).
+    """
+    url = f"{FMP_BASE}/quote/{ticker}"
+    params = {"apikey": fmp_key}
+    try:
+        resp = _std_requests.get(url, params=params, timeout=15)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not isinstance(data, list) or not data:
+            return None
+        item = data[0]
+        price = item.get("price")
+        prev  = item.get("previousClose")
+        vol   = item.get("volume", 0)
+        avg_v = item.get("avgVolume", vol or 1)
+        if not price or not prev:
+            return None
+        # Build synthetic closes list sufficient for metric computation
+        synthetic_closes  = [prev] * 21 + [price]
+        synthetic_volumes = [avg_v] * 21 + [vol]
+        return {"closes": synthetic_closes, "volumes": synthetic_volumes}
+    except Exception:
+        return None
+
+
 def _fetch_fmp_batch(tickers: list) -> dict:
     """
-    Fetch current quote data for a batch of tickers from FMP.
+    Fetch quote data for a list of tickers from FMP.
+    Tries bulk endpoint first; falls back to individual requests if 403.
     Returns {ticker: {closes: [...], volumes: [...]}} for successful fetches.
-    FMP free tier returns today's price + basic stats — we simulate a minimal
-    closes list sufficient for metric computation.
     """
     fmp_key = os.getenv("FMP_API_KEY")
     if not fmp_key:
@@ -166,17 +194,23 @@ def _fetch_fmp_batch(tickers: list) -> dict:
         return {}
 
     results = {}
-    # FMP bulk quote endpoint — comma-separated tickers
-    chunk_size = 50  # FMP handles up to ~50 per call comfortably
+
+    # Try bulk endpoint first (works on paid tier)
+    bulk_failed = False
+    chunk_size  = 50
     for i in range(0, len(tickers), chunk_size):
-        chunk = tickers[i:i + chunk_size]
+        chunk   = tickers[i:i + chunk_size]
         symbols = ",".join(chunk)
-        url = f"{FMP_BASE}/quote/{symbols}"
-        params = {"apikey": fmp_key}
+        url     = f"{FMP_BASE}/quote/{symbols}"
+        params  = {"apikey": fmp_key}
         try:
             resp = _std_requests.get(url, params=params, timeout=15)
+            if resp.status_code == 403:
+                logger.warning("[FMP] Bulk endpoint returned 403 — switching to individual requests")
+                bulk_failed = True
+                break
             if resp.status_code != 200:
-                logger.warning(f"FMP returned HTTP {resp.status_code} for batch")
+                logger.warning(f"[FMP] Bulk endpoint returned HTTP {resp.status_code}")
                 continue
             data = resp.json()
             if not isinstance(data, list):
@@ -187,18 +221,27 @@ def _fetch_fmp_batch(tickers: list) -> dict:
                 prev   = item.get("previousClose")
                 vol    = item.get("volume", 0)
                 avg_v  = item.get("avgVolume", vol or 1)
-                change_pct_1y = item.get("yearHigh")  # used to approximate monthly
-                # Build synthetic closes: [month_ago, week_ago, prev, prev, current]
-                # Using available FMP fields to approximate trend
-                month_ago_price = price / (1 + (item.get("ytdReturn", 0) or 0) / 100) if item.get("ytdReturn") else prev
-                if price and prev:
-                    # Minimal 6-element closes for metric computation
-                    synthetic_closes  = [month_ago_price] * 17 + [prev, prev, prev, prev, price]
-                    synthetic_volumes = [avg_v] * 21 + [vol]
-                    results[ticker] = {"closes": synthetic_closes, "volumes": synthetic_volumes}
+                if ticker and price and prev:
+                    results[ticker] = {
+                        "closes":  [prev] * 21 + [float(price)],
+                        "volumes": [avg_v] * 21 + [float(vol or 0)],
+                    }
         except Exception as e:
-            logger.warning(f"FMP batch fetch error: {e}")
+            logger.warning(f"[FMP] Bulk fetch error: {e}")
         time.sleep(0.5)
+
+    # Fall back to individual requests if bulk failed with 403
+    if bulk_failed:
+        logger.info(f"[FMP] Fetching {len(tickers)} tickers individually...")
+        for ticker in tickers:
+            raw = _fetch_fmp_single(ticker, fmp_key)
+            if raw:
+                results[ticker] = raw
+                logger.info(f"[FMP] ✓ {ticker}")
+            else:
+                logger.warning(f"[FMP] ✗ {ticker} — no data")
+            time.sleep(0.3)
+
     return results
 
 
