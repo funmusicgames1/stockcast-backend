@@ -1,7 +1,7 @@
 yfinance==0.2.48
 anthropic==0.25.0
 google-genai>=1.0.0
-supabase==2.4.2
+supabase>=2.24.0
 newsapi-python==0.2.7
 python-dotenv==1.0.1
 requests==2.31.0
