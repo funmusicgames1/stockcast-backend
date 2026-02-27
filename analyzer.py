@@ -155,11 +155,12 @@ def _run_gemini(prompt: str) -> dict | None:
             try:
                 logger.info(f"[Gemini] Sending request (attempt {attempt + 1})...")
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash",
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         temperature=0.7,
                         max_output_tokens=2048,
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
                     )
                 )
                 raw = response.text
