@@ -149,31 +149,40 @@ def write_json(payload: dict) -> bool:
 
 def fetch_index_data() -> dict:
     """
-    Fetch S&P 500, NASDAQ, DOW current values using yfinance.
-    Returns a lightweight dict for the market overview strip.
+    Fetch S&P 500, NASDAQ, DOW from Financial Modeling Prep API.
+    Uses the same FMP key already in use for stock fallback.
     """
-    import yfinance as yf
+    import os
+    import requests
 
-    tickers = {"sp500": "^GSPC", "nasdaq": "^IXIC", "dow": "^DJI"}
-    result = {}
+    fmp_key = os.getenv("FMP_API_KEY")
+    if not fmp_key:
+        logger.warning("FMP_API_KEY not set — cannot fetch index data")
+        return {k: {"value": None, "change_pct": None, "direction": "neutral"} for k in ["sp500", "nasdaq", "dow"]}
 
-    for name, symbol in tickers.items():
+    indices = {"sp500": "%5EGSPC", "nasdaq": "%5EIXIC", "dow": "%5EDJI"}
+    result  = {}
+
+    for name, symbol in indices.items():
         try:
-            t = yf.Ticker(symbol)
-            hist = t.history(period="2d")
-            if len(hist) >= 2:
-                current = float(hist["Close"].iloc[-1])
-                prev = float(hist["Close"].iloc[-2])
-                change_pct = ((current - prev) / prev) * 100
-                result[name] = {
-                    "value": round(current, 2),
-                    "change_pct": round(change_pct, 2),
-                    "direction": "up" if change_pct >= 0 else "down",
-                }
-            else:
-                result[name] = {"value": None, "change_pct": None, "direction": "neutral"}
+            url  = f"https://financialmodelingprep.com/api/v3/quote/{symbol}"
+            resp = requests.get(url, params={"apikey": fmp_key}, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            if data and isinstance(data, list):
+                item       = data[0]
+                price      = item.get("price")
+                change_pct = item.get("changesPercentage")
+                if price is not None:
+                    result[name] = {
+                        "value":      round(float(price), 2),
+                        "change_pct": round(float(change_pct), 2) if change_pct is not None else None,
+                        "direction":  "up" if (change_pct or 0) >= 0 else "down",
+                    }
+                    continue
+            result[name] = {"value": None, "change_pct": None, "direction": "neutral"}
         except Exception as e:
-            logger.warning(f"Failed to fetch index {symbol}: {e}")
+            logger.warning(f"FMP index fetch failed for {name}: {e}")
             result[name] = {"value": None, "change_pct": None, "direction": "neutral"}
 
     return result
