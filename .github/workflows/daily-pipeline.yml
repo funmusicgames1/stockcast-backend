@@ -2,8 +2,18 @@ name: StockCast Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 12 * * 1-5'  # 12:00 UTC = 6:00 AM CST, Monday to Friday only
-  workflow_dispatch:          # Allow manual trigger from GitHub Actions tab
+    - cron: '0 12 * * 1-5'   # 12:00 UTC = 6:00 AM CST — morning predictions run
+    - cron: '0 22 * * 1-5'   # 22:00 UTC = ~5/6 PM ET (buffer after 4 PM ET close) — EOD accuracy run
+  workflow_dispatch:           # Allow manual trigger from GitHub Actions tab
+    inputs:
+      mode:
+        description: 'Which pipeline mode to run'
+        required: false
+        default: 'predictions'
+        type: choice
+        options:
+          - predictions
+          - accuracy
 
 jobs:
   run-pipeline:
@@ -25,6 +35,15 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system -r requirements.txt
 
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 22 * * 1-5" ]; then
+            echo "value=accuracy" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ github.event.inputs.mode || 'predictions' }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run pipeline
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -39,4 +58,4 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
-        run: python main.py
+        run: python main.py --mode ${{ steps.mode.outputs.value }}

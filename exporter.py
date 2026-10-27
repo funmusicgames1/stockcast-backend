@@ -43,6 +43,7 @@ def build_frontend_json(
     today_predictions: dict,
     yesterday_predictions: dict | None,
     yesterday_actuals: list,
+    yesterday_date_str: str,
     index_data: dict,
     stock_data: dict = None,
     claude_predictions: dict | None = None,
@@ -51,6 +52,12 @@ def build_frontend_json(
     """
     Assemble the full JSON payload the frontend needs.
     Includes separate claude and gemini prediction sets for model comparison.
+
+    yesterday_date_str: the calendar date the "yesterday"/Historical Performance
+    block actually belongs to. Morning (predictions) runs pass the prior calendar
+    day, since that's the most recently fully-scored day on record. EOD (accuracy)
+    runs pass today's own date, since they're scoring today's predictions against
+    today's close the same evening instead of waiting for tomorrow morning.
     """
 
     # Build actuals lookup
@@ -92,7 +99,7 @@ def build_frontend_json(
         if not preds:
             return {"winners": [], "losers": [], "has_actuals": False}
         return {
-            "date":        (date.today() - timedelta(days=1)).isoformat(),
+            "date":        yesterday_date_str,
             "winners":     enrich_with_actuals(preds.get("winners", []), "winner"),
             "losers":      enrich_with_actuals(preds.get("losers",  []), "loser"),
             "has_actuals": len(actuals_map) > 0,
@@ -122,7 +129,7 @@ def build_frontend_json(
             },
         },
         "yesterday": {
-            "date":   (date.today() - timedelta(days=1)).isoformat(),
+            "date":   yesterday_date_str,
             "claude": build_yesterday_block(yesterday_predictions),
             "gemini": build_yesterday_block(yesterday_predictions),  # same actuals, different predictions will be stored later
         },
