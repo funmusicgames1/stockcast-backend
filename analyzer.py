@@ -124,7 +124,7 @@ def _run_claude(prompt: str) -> dict | None:
         client  = anthropic.Anthropic(api_key=api_key)
         logger.info("[Claude] Sending request...")
         message = client.messages.create(
-            model="claude-opus-4-6",
+            model="claude-sonnet-5",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
