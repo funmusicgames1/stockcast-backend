@@ -403,6 +403,21 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
                 if bar_date_str == date_str and c is not None:
                     exact_close = float(c)
                     break
+
+            # The historical adjclose bar for "today" can stay null for hours
+            # after the close while Yahoo's backend finalizes it — but the
+            # quote metadata's regularMarketPrice/regularMarketTime update
+            # right at the 4 PM close itself. Use that as the same-day close
+            # whenever the historical bar hasn't caught up yet.
+            if exact_close is None:
+                meta = r.get("meta", {})
+                mkt_time  = meta.get("regularMarketTime")
+                mkt_price = meta.get("regularMarketPrice")
+                if mkt_time and mkt_price is not None:
+                    mkt_date_str = datetime.utcfromtimestamp(mkt_time).strftime("%Y-%m-%d")
+                    if mkt_date_str == date_str:
+                        exact_close = float(mkt_price)
+
             if exact_close is not None:
                 actuals[ticker] = round(exact_close, 2)
             else:
