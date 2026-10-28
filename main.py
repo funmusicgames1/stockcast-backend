@@ -243,8 +243,11 @@ def run_backfill_open(json_path: str, date_str: str):
         return
 
     from database import save_open_prices, get_predictions_for_date, get_actuals_for_date, get_open_prices_for_date
-    save_open_prices(date_str, rows)
-    logger.info(f"Saved {len(rows)} historical open-price checkpoints for {date_str}.")
+    saved = save_open_prices(date_str, rows)
+    if saved:
+        logger.info(f"Saved {len(rows)} historical open-price checkpoints for {date_str}.")
+    else:
+        logger.error(f"Failed to save open-price checkpoints for {date_str} — see error above. Export below will be missing this data.")
 
     logger.info("Re-exporting data.json with the backfilled open prices...")
     from exporter import build_frontend_json, fetch_index_data
@@ -356,8 +359,11 @@ def run_market_open():
         logger.warning("Could not compute any open-price checkpoints — skipping save/export.")
         return
 
-    save_open_prices(today_str, rows)
-    logger.info(f"Saved {len(rows)} open-price checkpoints under {today_str}.")
+    saved = save_open_prices(today_str, rows)
+    if saved:
+        logger.info(f"Saved {len(rows)} open-price checkpoints under {today_str}.")
+    else:
+        logger.error(f"Failed to save open-price checkpoints for {today_str} — see error above. Export below will be missing this data.")
 
     logger.info("Exporting updated data.json with market-open checkpoint...")
     from exporter import build_frontend_json, fetch_index_data
