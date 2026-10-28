@@ -148,6 +148,40 @@ def run_predictions():
     )
 
 
+def run_backfill(json_path: str):
+    """
+    One-off disaster-recovery path: restores a day's predictions that were
+    genuinely generated (e.g. shown live on the site that morning) but never
+    made it into Supabase because the DB was unreachable at save time — this
+    is NOT for inventing predictions after the fact. Only use this with a
+    real prediction set that actually existed; never backfill a day that
+    was never genuinely predicted.
+
+    Saves the given JSON (same shape as an AI prediction result: market_summary,
+    winners, losers) under today's CST date, then immediately runs the normal
+    end-of-day accuracy scoring against it, since we're still inside the same
+    calendar day the predictions belong to.
+    """
+    import json
+
+    logger.info("=" * 60)
+    logger.info(f"StockCast BACKFILL run starting (source: {json_path})...")
+    logger.info(f"Date: {today_cst().isoformat()}")
+    logger.info("=" * 60)
+
+    with open(json_path) as f:
+        predictions = json.load(f)
+
+    from database import save_predictions
+    saved = save_predictions(predictions)
+    if not saved:
+        logger.error("Backfill save failed — aborting, not attempting accuracy scoring.")
+        sys.exit(1)
+
+    logger.info(f"Backfilled predictions saved under {today_cst().isoformat()}. Running accuracy scoring now...")
+    run_accuracy()
+
+
 def run_accuracy():
     logger.info("=" * 60)
     logger.info("StockCast ACCURACY (end-of-day) run starting...")
@@ -296,10 +330,15 @@ def push_to_github(json_path: str) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["predictions", "accuracy"], default="predictions")
+    parser.add_argument("--mode", choices=["predictions", "accuracy", "backfill"], default="predictions")
+    parser.add_argument("--file", help="JSON file path for --mode backfill (see backfill_data/)")
     args = parser.parse_args()
 
     if args.mode == "predictions":
         run_predictions()
-    else:
+    elif args.mode == "accuracy":
         run_accuracy()
+    elif args.mode == "backfill":
+        if not args.file:
+            parser.error("--mode backfill requires --file <path to prediction JSON>")
+        run_backfill(args.file)

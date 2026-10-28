@@ -14,6 +14,11 @@ on:
         options:
           - predictions
           - accuracy
+          - backfill
+      backfill_file:
+        description: 'Path to a prediction JSON file under backfill_data/ (only used when mode is backfill)'
+        required: false
+        default: ''
 
 jobs:
   run-pipeline:
@@ -58,4 +63,9 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
-        run: python main.py --mode ${{ steps.mode.outputs.value }}
+        run: |
+          if [ "${{ steps.mode.outputs.value }}" = "backfill" ]; then
+            python main.py --mode backfill --file "${{ github.event.inputs.backfill_file }}"
+          else
+            python main.py --mode ${{ steps.mode.outputs.value }}
+          fi

@@ -1,0 +1,27 @@
+{
+  "market_summary": "Mixed market with AI IPO excitement, upcoming Fed decisions, and ongoing semiconductor weakness.",
+  "winners": [
+    {"rank": 1, "ticker": "SOFI", "company": "SoFi Technologies Inc.", "sector": "Finance", "predicted_change_pct": 8.5, "reason": "Strong 1-day/1-week surge, high volume."},
+    {"rank": 2, "ticker": "RKLB", "company": "Rocket Lab USA, Inc.", "sector": "Industrials", "predicted_change_pct": 7.8, "reason": "Significant 1-day/1-week gain, high momentum."},
+    {"rank": 3, "ticker": "IREN", "company": "Iris Energy Limited", "sector": "Technology", "predicted_change_pct": 6.5, "reason": "Strong 1-day gain, high momentum."},
+    {"rank": 4, "ticker": "ASTS", "company": "AST SpaceMobile, Inc.", "sector": "Communication Services", "predicted_change_pct": 6.2, "reason": "High 1-day gain, strong momentum."},
+    {"rank": 5, "ticker": "RIOT", "company": "Riot Platforms, Inc.", "sector": "Technology", "predicted_change_pct": 5.8, "reason": "Strong 1-day gain, Bitcoin miner rally."},
+    {"rank": 6, "ticker": "HUT", "company": "Hut 8 Corp.", "sector": "Technology", "predicted_change_pct": 5.5, "reason": "Strong 1-day gain, Bitcoin miner rally."},
+    {"rank": 7, "ticker": "GM", "company": "General Motors Company", "sector": "Consumer Discretionary", "predicted_change_pct": 5.1, "reason": "Strong 1-day gain, good momentum."},
+    {"rank": 8, "ticker": "AMD", "company": "Advanced Micro Devices, Inc.", "sector": "Technology", "predicted_change_pct": 4.9, "reason": "Strong 1-day gain, AI earnings catalyst."},
+    {"rank": 9, "ticker": "AVGO", "company": "Broadcom Inc.", "sector": "Technology", "predicted_change_pct": 4.5, "reason": "Strong 1-day gain, high momentum."},
+    {"rank": 10, "ticker": "UPS", "company": "United Parcel Service, Inc.", "sector": "Industrials", "predicted_change_pct": 4.3, "reason": "Strong 1-day/1-week gain, high momentum."}
+  ],
+  "losers": [
+    {"rank": 1, "ticker": "VLO", "company": "Valero Energy Corporation", "sector": "Energy", "predicted_change_pct": -6.8, "reason": "Significant 1-day/1-week drop, high volume."},
+    {"rank": 2, "ticker": "PSX", "company": "Phillips 66", "sector": "Energy", "predicted_change_pct": -5.9, "reason": "Significant 1-day/1-week drop."},
+    {"rank": 3, "ticker": "MPC", "company": "Marathon Petroleum Corporation", "sector": "Energy", "predicted_change_pct": -5.5, "reason": "Significant 1-day/1-week drop."},
+    {"rank": 4, "ticker": "BA", "company": "The Boeing Company", "sector": "Industrials", "predicted_change_pct": -5.0, "reason": "Massive 1-day/1-week drop, high volume."},
+    {"rank": 5, "ticker": "HCA", "company": "HCA Healthcare, Inc.", "sector": "Healthcare", "predicted_change_pct": -4.5, "reason": "Significant 1-day/1-week drop, high volume."},
+    {"rank": 6, "ticker": "WELL", "company": "Welltower Inc.", "sector": "Real Estate", "predicted_change_pct": -4.0, "reason": "Significant 1-day/1-week drop, high volume."},
+    {"rank": 7, "ticker": "ADBE", "company": "Adobe Inc.", "sector": "Technology", "predicted_change_pct": -3.5, "reason": "Significant 1-day drop, low momentum."},
+    {"rank": 8, "ticker": "HLT", "company": "Hilton Worldwide Holdings Inc.", "sector": "Consumer Discretionary", "predicted_change_pct": -3.0, "reason": "Significant 1-day/1-week drop, high volume."},
+    {"rank": 9, "ticker": "HSY", "company": "The Hershey Company", "sector": "Consumer Staples", "predicted_change_pct": -2.8, "reason": "Significant 1-day/1-week drop."},
+    {"rank": 10, "ticker": "NFLX", "company": "Netflix, Inc.", "sector": "Communication Services", "predicted_change_pct": -2.5, "reason": "Weak 1-day/1-week/1-month trend, low momentum."}
+  ]
+}
