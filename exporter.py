@@ -116,21 +116,19 @@ def build_frontend_json(
             # to the checkpoint row if the entry itself doesn't have it yet
             # (e.g. a day backfilled before that enrichment existed).
             prev_close = entry.get("prev_close")
-            open_price = gap_pct = gap_captured_pct = None
+            open_price = gap_pct = None
             if row:
                 if prev_close is None:
                     prev_close = row.get("prev_close")
                 open_price = row.get("open_price")
-                gap_pct    = row.get("gap_pct")
-                predicted  = entry.get("predicted_change_pct")
-                if gap_pct is not None and predicted:
-                    gap_captured_pct = round((gap_pct / predicted) * 100, 1)
+                # gap_pct: the plain % move from prev close to open —
+                # "how much did it already move before the market opened."
+                gap_pct = row.get("gap_pct")
             enriched.append({
                 **entry,
-                "prev_close":       prev_close,
-                "open_price":       open_price,
-                "gap_pct":          gap_pct,
-                "gap_captured_pct": gap_captured_pct,
+                "prev_close": prev_close,
+                "open_price": open_price,
+                "gap_pct":    gap_pct,
             })
         return enriched
 
