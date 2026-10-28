@@ -366,12 +366,21 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
     target   = datetime.strptime(date_str, "%Y-%m-%d")
     start_ts = int((target - timedelta(days=5)).timestamp())
     end_ts   = int((target + timedelta(days=2)).timestamp())
-    target_ts = int(target.timestamp()) + 86400
 
     actuals    = {}
     yf_missing = []
 
     # Pass 1: Yahoo Finance
+    # IMPORTANT: match the bar whose own calendar date equals date_str exactly.
+    # Do NOT walk backward to the nearest earlier non-null close here — if the
+    # exact day's bar is missing or still null (e.g. the day's adjclose hasn't
+    # finalized yet, shortly after close), silently substituting an older
+    # day's close would make two different requested dates (e.g. "today" vs
+    # "yesterday") return identical prices without ever surfacing as missing,
+    # which defeats both the FMP fallback below and the caller's own explicit
+    # weekend/holiday fallback (main.py walks further back on purpose when it
+    # wants that). Exact-date matching keeps "no data for this date" visibly
+    # missing so it gets handled deliberately instead of silently wrong.
     for ticker in tickers:
         url    = f"{YF_BASE}{ticker}"
         params = {"period1": start_ts, "period2": end_ts, "interval": "1d", "includePrePost": "false"}
@@ -388,12 +397,14 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
             r          = result[0]
             timestamps = r.get("timestamp", [])
             closes     = r.get("indicators", {}).get("adjclose", [{}])[0].get("adjclose", [])
-            best_close = None
+            exact_close = None
             for ts, c in zip(timestamps, closes):
-                if ts <= target_ts and c is not None:
-                    best_close = float(c)
-            if best_close is not None:
-                actuals[ticker] = round(best_close, 2)
+                bar_date_str = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
+                if bar_date_str == date_str and c is not None:
+                    exact_close = float(c)
+                    break
+            if exact_close is not None:
+                actuals[ticker] = round(exact_close, 2)
             else:
                 yf_missing.append(ticker)
         except Exception:
@@ -401,14 +412,31 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
         time.sleep(0.2)
 
     # Pass 2: FMP fallback for missing actuals
+    # Same exact-date requirement as Yahoo above — FMP's own "latest close"
+    # can also lag right after market close, so matching the specific date
+    # (not just taking the newest entry in the window) matters here too.
     if yf_missing:
         logger.info(f"[FMP] Fetching actual prices for {len(yf_missing)} missing tickers...")
         fmp_key = os.getenv("FMP_API_KEY")
         if fmp_key:
             for ticker in yf_missing:
-                raw = _fetch_fmp_history(ticker, days=10)
-                if raw and raw["closes"]:
-                    actuals[ticker] = round(raw["closes"][-1], 2)
+                try:
+                    resp = _std_requests.get(
+                        f"{FMP_BASE}/historical-price-full/{ticker}",
+                        params={
+                            "from": (target - timedelta(days=5)).strftime("%Y-%m-%d"),
+                            "to":   (target + timedelta(days=2)).strftime("%Y-%m-%d"),
+                            "apikey": fmp_key,
+                        },
+                        timeout=15,
+                    )
+                    if resp.status_code == 200:
+                        for day in resp.json().get("historical", []):
+                            if day.get("date") == date_str and day.get("adjClose"):
+                                actuals[ticker] = round(float(day["adjClose"]), 2)
+                                break
+                except Exception:
+                    pass
                 time.sleep(0.3)
 
     logger.info(f"Fetched actual prices for {len(actuals)}/{len(tickers)} tickers")
