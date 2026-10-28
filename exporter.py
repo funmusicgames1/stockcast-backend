@@ -156,40 +156,37 @@ def write_json(payload: dict) -> bool:
 
 def fetch_index_data() -> dict:
     """
-    Fetch S&P 500, NASDAQ, DOW from Financial Modeling Prep API.
-    Uses the same FMP key already in use for stock fallback.
+    Fetch S&P 500, NASDAQ, DOW from Yahoo Finance's chart API.
+    FMP's /quote endpoint 403s on index symbols (^GSPC etc.) on the free
+    tier — index quotes require a paid FMP plan. Yahoo serves these with
+    no key and no plan restriction, and is already the primary source for
+    everything else in this pipeline.
     """
-    import os
     import requests
 
-    fmp_key = os.getenv("FMP_API_KEY")
-    if not fmp_key:
-        logger.warning("FMP_API_KEY not set — cannot fetch index data")
-        return {k: {"value": None, "change_pct": None, "direction": "neutral"} for k in ["sp500", "nasdaq", "dow"]}
-
     indices = {"sp500": "%5EGSPC", "nasdaq": "%5EIXIC", "dow": "%5EDJI"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     result  = {}
 
     for name, symbol in indices.items():
         try:
-            url  = f"https://financialmodelingprep.com/api/v3/quote/{symbol}"
-            resp = requests.get(url, params={"apikey": fmp_key}, timeout=15)
+            url  = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+            resp = requests.get(url, params={"range": "1d", "interval": "1d"}, headers=headers, timeout=15)
             resp.raise_for_status()
-            data = resp.json()
-            if data and isinstance(data, list):
-                item       = data[0]
-                price      = item.get("price")
-                change_pct = item.get("changesPercentage")
-                if price is not None:
-                    result[name] = {
-                        "value":      round(float(price), 2),
-                        "change_pct": round(float(change_pct), 2) if change_pct is not None else None,
-                        "direction":  "up" if (change_pct or 0) >= 0 else "down",
-                    }
-                    continue
+            meta  = resp.json()["chart"]["result"][0]["meta"]
+            price = meta.get("regularMarketPrice")
+            prev  = meta.get("chartPreviousClose")
+            if price is not None and prev:
+                change_pct = ((price - prev) / prev) * 100
+                result[name] = {
+                    "value":      round(float(price), 2),
+                    "change_pct": round(change_pct, 2),
+                    "direction":  "up" if change_pct >= 0 else "down",
+                }
+                continue
             result[name] = {"value": None, "change_pct": None, "direction": "neutral"}
         except Exception as e:
-            logger.warning(f"FMP index fetch failed for {name}: {e}")
+            logger.warning(f"Yahoo index fetch failed for {name}: {e}")
             result[name] = {"value": None, "change_pct": None, "direction": "neutral"}
 
     return result
