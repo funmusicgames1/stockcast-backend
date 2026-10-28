@@ -228,6 +228,98 @@ def run_backfill(json_path: str):
     run_accuracy()
 
 
+def run_fix_prev_close(date_str: str):
+    """
+    One-off correction: re-fetches each ticker's real closing price for the
+    prior trading day and overwrites prev_close on an already-saved
+    prediction row, without touching predicted_change_pct/reason/company —
+    the actual AI-generated prediction content stays exactly as it was.
+    Only for fixing a wrong baseline value, never for regenerating content.
+
+    Only supports today_cst() — save_predictions() always writes under
+    today's date internally, so running this for any other date would
+    silently save the fix under the wrong day.
+    """
+    from datetime import timedelta as _td
+    from database import get_predictions_for_date, save_predictions
+    from fetcher import fetch_actual_prices
+
+    logger.info("=" * 60)
+    logger.info(f"StockCast FIX-PREV-CLOSE run starting (date: {date_str})...")
+    logger.info("=" * 60)
+
+    if date_str != today_cst().isoformat():
+        logger.error(f"--mode fix_prev_close only supports today ({today_cst().isoformat()}), not {date_str} — aborting.")
+        return
+
+    predictions = get_predictions_for_date(date_str)
+    if not predictions:
+        logger.warning(f"No predictions on record for {date_str} — nothing to fix.")
+        return
+
+    entries = predictions.get("winners", []) + predictions.get("losers", [])
+    tickers = [e["ticker"] for e in entries]
+
+    baseline_str = (datetime.strptime(date_str, "%Y-%m-%d").date() - _td(days=1)).isoformat()
+    actual_prices = fetch_actual_prices(tickers, baseline_str)
+
+    if not actual_prices:
+        for days_back in range(2, 7):
+            fallback_str = (datetime.strptime(date_str, "%Y-%m-%d").date() - _td(days=days_back)).isoformat()
+            actual_prices = fetch_actual_prices(tickers, fallback_str)
+            if actual_prices:
+                logger.info(f"Using {fallback_str} as previous close (weekend/holiday fallback).")
+                break
+
+    fixed = 0
+    for entry in entries:
+        correct = actual_prices.get(entry["ticker"])
+        if correct is not None and entry.get("prev_close") != correct:
+            logger.info(f"  {entry['ticker']}: prev_close {entry.get('prev_close')} -> {correct}")
+            entry["prev_close"] = correct
+            fixed += 1
+
+    if fixed == 0:
+        logger.info("Nothing needed fixing.")
+        return
+
+    save_predictions(predictions)
+    logger.info(f"Fixed prev_close on {fixed} entries for {date_str}.")
+
+    # Re-export "today" with the corrected predictions — NOT run_accuracy(),
+    # since that only exports after successfully scoring against a market
+    # close that may not exist yet (e.g. this runs mid-morning, before
+    # today's close). Mirrors run_predictions()'s own Step 5/6 tail.
+    logger.info("Re-exporting data.json with corrected prev_close...")
+    from database import get_actuals_for_date, get_open_prices_for_date
+    from exporter import build_frontend_json, fetch_index_data
+
+    yesterday_str = baseline_str
+    yesterday_predictions = get_predictions_for_date(yesterday_str)
+    yesterday_actuals = []
+    if yesterday_predictions:
+        actuals_rows = get_actuals_for_date(yesterday_str)
+        yesterday_actuals = [
+            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
+            for a in actuals_rows
+        ]
+    yesterday_open_prices_map = get_open_prices_for_date(yesterday_str)
+
+    index_data = fetch_index_data()
+    payload    = build_frontend_json(
+        today_predictions          = predictions,
+        yesterday_predictions      = yesterday_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = yesterday_str,
+        index_data                 = index_data,
+        stock_data                 = None,
+        claude_predictions         = None,
+        gemini_predictions         = predictions,
+        yesterday_open_prices_map  = yesterday_open_prices_map,
+    )
+    _finish(payload)
+
+
 def run_backfill_open(json_path: str, date_str: str):
     """
     One-off historical backfill for the market-open checkpoint, for a day
@@ -583,9 +675,9 @@ def push_to_github(json_path: str) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill", "backfill_open"], default="predictions")
+    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill", "backfill_open", "fix_prev_close"], default="predictions")
     parser.add_argument("--file", help="JSON file path for --mode backfill / backfill_open (see backfill_data/)")
-    parser.add_argument("--date", help="Target date (YYYY-MM-DD) for --mode backfill_open")
+    parser.add_argument("--date", help="Target date (YYYY-MM-DD) for --mode backfill_open / fix_prev_close")
     args = parser.parse_args()
 
     if args.mode == "predictions":
@@ -602,3 +694,7 @@ if __name__ == "__main__":
         if not args.file or not args.date:
             parser.error("--mode backfill_open requires --file <path> and --date <YYYY-MM-DD>")
         run_backfill_open(args.file, args.date)
+    elif args.mode == "fix_prev_close":
+        if not args.date:
+            parser.error("--mode fix_prev_close requires --date <YYYY-MM-DD>")
+        run_fix_prev_close(args.date)
