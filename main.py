@@ -410,6 +410,11 @@ def run_market_open():
     actually lands within a few minutes of real market open does anything —
     the other exits immediately. No new AI call, no new predictions — just
     a price snapshot against predictions already saved this morning.
+
+    The time-window check only applies to the automated schedule trigger
+    (checked via TRIGGER_EVENT) — a manual/workflow_dispatch run executes
+    immediately regardless of the clock, so a deliberate "get me today's
+    number even though the window passed" run isn't blocked.
     """
     import pytz
     from datetime import datetime as _dt
@@ -417,18 +422,19 @@ def run_market_open():
     et     = pytz.timezone("America/New_York")
     now_et = _dt.now(et)
 
-    if now_et.weekday() >= 5:
-        logger.info(f"{now_et.strftime('%A')} — market closed. Exiting (expected on weekends).")
-        return
+    if os.getenv("TRIGGER_EVENT") == "schedule":
+        if now_et.weekday() >= 5:
+            logger.info(f"{now_et.strftime('%A')} — market closed. Exiting (expected on weekends).")
+            return
 
-    minutes_since_midnight = now_et.hour * 60 + now_et.minute
-    market_open_minutes    = 9 * 60 + 30
-    if not (market_open_minutes - 2 <= minutes_since_midnight <= market_open_minutes + 10):
-        logger.info(
-            f"Current ET time is {now_et.strftime('%H:%M')} — not within the market-open "
-            f"window. Exiting (expected: this is one of two DST-safety cron firings)."
-        )
-        return
+        minutes_since_midnight = now_et.hour * 60 + now_et.minute
+        market_open_minutes    = 9 * 60 + 30
+        if not (market_open_minutes - 2 <= minutes_since_midnight <= market_open_minutes + 10):
+            logger.info(
+                f"Current ET time is {now_et.strftime('%H:%M')} — not within the market-open "
+                f"window. Exiting (expected: this is one of two DST-safety cron firings)."
+            )
+            return
 
     logger.info("=" * 60)
     logger.info("StockCast MARKET-OPEN checkpoint starting...")
