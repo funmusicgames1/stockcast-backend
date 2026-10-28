@@ -115,7 +115,14 @@ def run_predictions():
             return predictions
         for key in ("winners", "losers"):
             for entry in predictions.get(key, []):
-                entry["prev_close"] = stock_data.get(entry["ticker"], {}).get("prev_close")
+                # stock_data's "current_price" is Yahoo's most recent completed
+                # daily close — at 7 AM, before today's market opens, that IS
+                # yesterday's close, exactly the baseline today's prediction
+                # needs. stock_data's own "prev_close" field means something
+                # different (the close one day further back, used internally
+                # for momentum calc) — using it here would attach the wrong
+                # day's close.
+                entry["prev_close"] = stock_data.get(entry["ticker"], {}).get("current_price")
         return predictions
 
     claude_predictions = _attach_prev_close(claude_predictions)
