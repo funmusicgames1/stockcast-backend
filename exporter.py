@@ -103,9 +103,15 @@ def build_frontend_json(
         enriched = []
         for entry in entries:
             row = (open_prices_map or {}).get(entry["ticker"])
-            prev_close = open_price = gap_pct = gap_captured_pct = None
+            # prev_close is already attached by main.py at prediction time
+            # (it's just yesterday's close, known at 6 AM) — only fall back
+            # to the checkpoint row if the entry itself doesn't have it yet
+            # (e.g. a day backfilled before that enrichment existed).
+            prev_close = entry.get("prev_close")
+            open_price = gap_pct = gap_captured_pct = None
             if row:
-                prev_close = row.get("prev_close")
+                if prev_close is None:
+                    prev_close = row.get("prev_close")
                 open_price = row.get("open_price")
                 gap_pct    = row.get("gap_pct")
                 predicted  = entry.get("predicted_change_pct")

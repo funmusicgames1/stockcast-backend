@@ -84,6 +84,20 @@ def run_predictions():
     claude_predictions = model_predictions.get("claude")
     gemini_predictions = model_predictions.get("gemini")
 
+    # prev_close is just yesterday's close — already known at 6 AM, no need
+    # to wait for the market-open checkpoint to show it. stock_data already
+    # has it per ticker (computed in fetcher._compute_metrics).
+    def _attach_prev_close(predictions):
+        if not predictions:
+            return predictions
+        for key in ("winners", "losers"):
+            for entry in predictions.get(key, []):
+                entry["prev_close"] = stock_data.get(entry["ticker"], {}).get("prev_close")
+        return predictions
+
+    claude_predictions = _attach_prev_close(claude_predictions)
+    gemini_predictions = _attach_prev_close(gemini_predictions)
+
     if claude_predictions:
         logger.info(f"[Claude] {len(claude_predictions['winners'])} winners, {len(claude_predictions['losers'])} losers.")
     if gemini_predictions:
