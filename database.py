@@ -25,7 +25,8 @@ CREATE TABLE actuals (
 
 import os
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
+from datetime_utils import today_cst
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ def save_predictions(predictions: dict) -> bool:
     """
     try:
         client = get_client()
-        today = date.today().isoformat()
+        today = today_cst().isoformat()
 
         data = {
             "date": today,
@@ -149,7 +150,7 @@ def get_recent_history(days: int = 30) -> list:
     """
     try:
         client = get_client()
-        from_date = (date.today() - timedelta(days=days)).isoformat()
+        from_date = (today_cst() - timedelta(days=days)).isoformat()
 
         result = (
             client.table("predictions")

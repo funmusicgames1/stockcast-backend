@@ -25,8 +25,9 @@ import os
 import sys
 import logging
 import argparse
-from datetime import date, timedelta
+from datetime import timedelta
 from dotenv import load_dotenv
+from datetime_utils import today_cst
 
 load_dotenv()
 
@@ -41,7 +42,7 @@ logger = logging.getLogger("main")
 def run_predictions():
     logger.info("=" * 60)
     logger.info("StockCast PREDICTIONS run starting...")
-    logger.info(f"Date: {date.today().isoformat()}")
+    logger.info(f"Date: {today_cst().isoformat()}")
     logger.info("=" * 60)
 
     # ----------------------------------------------------------------
@@ -106,7 +107,7 @@ def run_predictions():
     #   compute here, just surface it for the Historical Performance view)
     # ----------------------------------------------------------------
     logger.info("Step 5/6: Reading yesterday's scored results...")
-    yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+    yesterday_str = (today_cst() - timedelta(days=1)).isoformat()
     yesterday_predictions = get_predictions_for_date(yesterday_str)
     yesterday_actuals = []
 
@@ -150,13 +151,13 @@ def run_predictions():
 def run_accuracy():
     logger.info("=" * 60)
     logger.info("StockCast ACCURACY (end-of-day) run starting...")
-    logger.info(f"Date: {date.today().isoformat()}")
+    logger.info(f"Date: {today_cst().isoformat()}")
     logger.info("=" * 60)
 
     from database import get_predictions_for_date, save_actuals
     from fetcher import fetch_actual_prices
 
-    today_str = date.today().isoformat()
+    today_str = today_cst().isoformat()
     today_predictions = get_predictions_for_date(today_str)
 
     if not today_predictions:
@@ -172,14 +173,14 @@ def run_accuracy():
         logger.warning("Today's prediction record has no tickers — nothing to score.")
         return
 
-    yesterday_str  = (date.today() - timedelta(days=1)).isoformat()
+    yesterday_str  = (today_cst() - timedelta(days=1)).isoformat()
     actual_prices  = fetch_actual_prices(all_tickers, today_str)      # today's close
     prev_prices    = fetch_actual_prices(all_tickers, yesterday_str)  # baseline close
 
     # Weekend/holiday fallback — walk further back until a prior close is found
     if not prev_prices:
         for days_back in range(2, 7):
-            fallback_str = (date.today() - timedelta(days=days_back)).isoformat()
+            fallback_str = (today_cst() - timedelta(days=days_back)).isoformat()
             prev_prices  = fetch_actual_prices(all_tickers, fallback_str)
             if prev_prices:
                 logger.info(f"Using {fallback_str} as previous close (weekend/holiday fallback).")
@@ -273,7 +274,7 @@ def push_to_github(json_path: str) -> bool:
         sha = get_resp.json().get("sha") if get_resp.status_code == 200 else None
 
         payload = {
-            "message": f"Update data {date.today().isoformat()}",
+            "message": f"Update data {today_cst().isoformat()}",
             "content": encoded,
         }
         if sha:

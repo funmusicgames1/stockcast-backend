@@ -6,7 +6,7 @@ This file is the bridge between the backend and the static frontend.
 import json
 import os
 import logging
-from datetime import date, timedelta
+from datetime_utils import today_cst
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def build_frontend_json(
     payload = {
         "generated_at": generated_at,
         "today": {
-            "date": date.today().isoformat(),
+            "date": today_cst().isoformat(),
             "claude": {
                 "market_summary": claude_predictions.get("market_summary", "") if claude_predictions else None,
                 "winners":        claude_predictions.get("winners", [])         if claude_predictions else [],
