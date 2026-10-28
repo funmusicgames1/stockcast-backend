@@ -21,8 +21,13 @@ on:
           - market_open
           - accuracy
           - backfill
+          - backfill_open
       backfill_file:
-        description: 'Path to a prediction JSON file under backfill_data/ (only used when mode is backfill)'
+        description: 'Path to a prediction JSON file under backfill_data/ (used when mode is backfill or backfill_open)'
+        required: false
+        default: ''
+      backfill_date:
+        description: 'Target date YYYY-MM-DD (only used when mode is backfill_open)'
         required: false
         default: ''
 
@@ -75,6 +80,8 @@ jobs:
         run: |
           if [ "${{ steps.mode.outputs.value }}" = "backfill" ]; then
             python main.py --mode backfill --file "${{ github.event.inputs.backfill_file }}"
+          elif [ "${{ steps.mode.outputs.value }}" = "backfill_open" ]; then
+            python main.py --mode backfill_open --file "${{ github.event.inputs.backfill_file }}" --date "${{ github.event.inputs.backfill_date }}"
           else
             python main.py --mode ${{ steps.mode.outputs.value }}
           fi

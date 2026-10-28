@@ -198,6 +198,80 @@ def run_backfill(json_path: str):
     run_accuracy()
 
 
+def run_backfill_open(json_path: str, date_str: str):
+    """
+    One-off historical backfill for the market-open checkpoint, for a day
+    that predates the run_market_open() feature. Unlike run_backfill()
+    (predictions), this carries no integrity concern — a historical open
+    price is an objective market fact recorded by the exchange, not a
+    forecast, so looking it up after the fact is a genuine lookup, not a
+    fabrication. Only works for recent dates (Yahoo's 1-minute bars are
+    only available for roughly the last 30 days).
+
+    json_path: same prediction JSON used for --mode backfill (needs each
+    entry's prev_close already attached).
+    """
+    import json as _json
+
+    logger.info("=" * 60)
+    logger.info(f"StockCast BACKFILL-OPEN run starting (source: {json_path}, date: {date_str})...")
+    logger.info("=" * 60)
+
+    with open(json_path) as f:
+        predictions = _json.load(f)
+
+    entries = predictions.get("winners", []) + predictions.get("losers", [])
+    prev_close_map = {e["ticker"]: e["prev_close"] for e in entries if e.get("prev_close") is not None}
+
+    if not prev_close_map:
+        logger.warning("No tickers with prev_close in the given file — nothing to backfill.")
+        return
+
+    from fetcher import fetch_open_price_at_time
+    open_prices = fetch_open_price_at_time(list(prev_close_map.keys()), date_str)
+
+    rows = []
+    for ticker, prev_close in prev_close_map.items():
+        if ticker in open_prices and prev_close:
+            open_price = open_prices[ticker]
+            gap_pct = ((open_price - prev_close) / prev_close) * 100
+            rows.append({"ticker": ticker, "prev_close": prev_close, "open_price": open_price, "gap_pct": round(gap_pct, 2)})
+            logger.info(f"  {ticker}: prev={prev_close}, open={open_price}, gap={gap_pct:+.2f}%")
+
+    if not rows:
+        logger.warning("Could not compute any historical open prices — skipping save/export.")
+        return
+
+    from database import save_open_prices, get_predictions_for_date, get_actuals_for_date, get_open_prices_for_date
+    save_open_prices(date_str, rows)
+    logger.info(f"Saved {len(rows)} historical open-price checkpoints for {date_str}.")
+
+    logger.info("Re-exporting data.json with the backfilled open prices...")
+    from exporter import build_frontend_json, fetch_index_data
+
+    today_predictions = get_predictions_for_date(date_str)
+    actuals_rows = get_actuals_for_date(date_str)
+    yesterday_actuals = [
+        {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
+        for a in actuals_rows
+    ]
+    prices_map = get_open_prices_for_date(date_str)
+    index_data = fetch_index_data()
+    payload    = build_frontend_json(
+        today_predictions          = today_predictions,
+        yesterday_predictions      = today_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = date_str,
+        index_data                 = index_data,
+        stock_data                 = None,
+        claude_predictions         = None,
+        gemini_predictions         = today_predictions,
+        today_open_prices_map      = prices_map,
+        yesterday_open_prices_map  = prices_map,
+    )
+    _finish(payload)
+
+
 def run_market_open():
     """
     Checkpoint run right at market open (9:30 AM ET / 8:30 AM CT — these are
@@ -473,8 +547,9 @@ def push_to_github(json_path: str) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill"], default="predictions")
-    parser.add_argument("--file", help="JSON file path for --mode backfill (see backfill_data/)")
+    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill", "backfill_open"], default="predictions")
+    parser.add_argument("--file", help="JSON file path for --mode backfill / backfill_open (see backfill_data/)")
+    parser.add_argument("--date", help="Target date (YYYY-MM-DD) for --mode backfill_open")
     args = parser.parse_args()
 
     if args.mode == "predictions":
@@ -487,3 +562,7 @@ if __name__ == "__main__":
         if not args.file:
             parser.error("--mode backfill requires --file <path to prediction JSON>")
         run_backfill(args.file)
+    elif args.mode == "backfill_open":
+        if not args.file or not args.date:
+            parser.error("--mode backfill_open requires --file <path> and --date <YYYY-MM-DD>")
+        run_backfill_open(args.file, args.date)

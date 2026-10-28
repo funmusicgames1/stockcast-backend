@@ -469,3 +469,55 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
 
     logger.info(f"Fetched actual prices for {len(actuals)}/{len(tickers)} tickers")
     return actuals
+
+
+def fetch_open_price_at_time(tickers: list, date_str: str, et_hour: int = 9, et_minute: int = 31) -> dict:
+    """
+    Historical backfill helper: fetch each ticker's 1-minute bar closest to
+    a specific ET time on a specific PAST date. Used to backfill the
+    market-open checkpoint for a day that predates the live run_market_open()
+    feature — this is a genuine historical price lookup (an objective market
+    fact), not a prediction, so backfilling it carries none of the integrity
+    concerns that backfilling a forecast would.
+
+    Only works for recent dates — Yahoo's 1-minute granularity is only
+    available for roughly the last 30 days.
+    """
+    import pytz
+
+    et = pytz.timezone("America/New_York")
+    naive_target = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=et_hour, minute=et_minute)
+    target_et = et.localize(naive_target)
+    target_ts = int(target_et.timestamp())
+    window_start = target_ts - 600
+    window_end   = target_ts + 600
+
+    result = {}
+    for ticker in tickers:
+        try:
+            url    = f"{YF_BASE}{_yf_symbol(ticker)}"
+            params = {"period1": window_start, "period2": window_end, "interval": "1m"}
+            resp   = _SESSION.get(url, headers=YF_HEADERS, params=params, timeout=15)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            r    = (data.get("chart", {}).get("result") or [None])[0]
+            if not r:
+                continue
+            timestamps = r.get("timestamp", [])
+            closes     = r.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+            best, best_diff = None, None
+            for ts, c in zip(timestamps, closes):
+                if c is None:
+                    continue
+                diff = abs(ts - target_ts)
+                if best_diff is None or diff < best_diff:
+                    best, best_diff = float(c), diff
+            if best is not None:
+                result[ticker] = round(best, 2)
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+    logger.info(f"Fetched historical open prices for {len(result)}/{len(tickers)} tickers near {et_hour:02d}:{et_minute:02d} ET on {date_str}.")
+    return result
