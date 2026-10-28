@@ -2,7 +2,12 @@ name: StockCast Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 12 * * 1-5'    # 12:00 UTC = 6:00 AM CST — morning predictions run
+    - cron: '0 11 * * 1-5'    # 11:00 UTC = 7:00 AM ET during daylight saving (EDT)
+    - cron: '0 12 * * 1-5'    # 12:00 UTC = 7:00 AM ET during standard time (EST)
+                               # ^ both target the morning predictions run at 7:00 AM
+                               #   ET; main.py checks the real ET clock and no-ops
+                               #   on whichever one is "wrong" for the current DST
+                               #   state — see the guard at the top of run_predictions()
     - cron: '31 13 * * 1-5'   # 13:31 UTC = 9:31 AM ET during daylight saving (EDT)
     - cron: '31 14 * * 1-5'   # 14:31 UTC = 9:31 AM ET during standard time (EST)
                                # ^ both target market open; main.py checks the real
@@ -65,6 +70,7 @@ jobs:
 
       - name: Run pipeline
         env:
+          TRIGGER_EVENT: ${{ github.event_name }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

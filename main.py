@@ -40,6 +40,29 @@ logger = logging.getLogger("main")
 
 
 def run_predictions():
+    # Scheduled via two cron triggers an hour apart (11:00 + 12:00 UTC) to
+    # target 7:00 AM ET year-round despite GitHub Actions cron having no DST
+    # awareness (see the workflow file). Only enforce the time window for
+    # the automated schedule trigger — a manual/workflow_dispatch run (e.g.
+    # for testing) should run immediately regardless of the clock.
+    if os.getenv("TRIGGER_EVENT") == "schedule":
+        import pytz
+        from datetime import datetime as _dt
+
+        et = pytz.timezone("America/New_York")
+        now_et = _dt.now(et)
+        if now_et.weekday() >= 5:
+            logger.info(f"{now_et.strftime('%A')} — market closed. Exiting (expected on weekends).")
+            return
+        minutes_since_midnight = now_et.hour * 60 + now_et.minute
+        target_minutes = 7 * 60
+        if not (target_minutes - 5 <= minutes_since_midnight <= target_minutes + 150):
+            logger.info(
+                f"Current ET time is {now_et.strftime('%H:%M')} — not within the predictions-run "
+                f"window. Exiting (expected: this is one of two DST-safety cron firings)."
+            )
+            return
+
     logger.info("=" * 60)
     logger.info("StockCast PREDICTIONS run starting...")
     logger.info(f"Date: {today_cst().isoformat()}")
