@@ -1,0 +1,27 @@
+{
+  "market_summary": "",
+  "winners": [
+    {"ticker": "SOFI", "prev_close": 16.4},
+    {"ticker": "TSLA", "prev_close": 407.46},
+    {"ticker": "GM", "prev_close": 80.54},
+    {"ticker": "UPS", "prev_close": 106.09},
+    {"ticker": "RKLB", "prev_close": 58.31},
+    {"ticker": "EDIT", "prev_close": 2.6},
+    {"ticker": "IREN", "prev_close": 27.44},
+    {"ticker": "RIOT", "prev_close": 13.56},
+    {"ticker": "MRNA", "prev_close": 207.97},
+    {"ticker": "BEAM", "prev_close": 24.9}
+  ],
+  "losers": [
+    {"ticker": "BA", "prev_close": 168.18},
+    {"ticker": "VLO", "prev_close": 387.34},
+    {"ticker": "PSX", "prev_close": 268.53},
+    {"ticker": "MPC", "prev_close": 435.98},
+    {"ticker": "HCA", "prev_close": 449.96},
+    {"ticker": "META", "prev_close": 620.19},
+    {"ticker": "XOM", "prev_close": 179.91},
+    {"ticker": "ADBE", "prev_close": 248.36},
+    {"ticker": "NFLX", "prev_close": 62.52},
+    {"ticker": "BKNG", "prev_close": 150.14}
+  ]
+}
