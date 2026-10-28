@@ -110,7 +110,7 @@ def run_predictions():
     # STEP 4: Save today's predictions to Supabase
     # ----------------------------------------------------------------
     logger.info("Step 4/6: Saving predictions to database...")
-    from database import save_predictions, get_predictions_for_date, get_actuals_for_date
+    from database import save_predictions, get_predictions_for_date, get_actuals_for_date, get_open_prices_for_date
     saved = save_predictions(primary_predictions)
     if not saved:
         logger.warning("Failed to save predictions — continuing anyway.")
@@ -124,11 +124,12 @@ def run_predictions():
     yesterday_str = (today_cst() - timedelta(days=1)).isoformat()
     yesterday_predictions = get_predictions_for_date(yesterday_str)
     yesterday_actuals = []
+    yesterday_open_prices_map = get_open_prices_for_date(yesterday_str)
 
     if yesterday_predictions:
         actuals_rows = get_actuals_for_date(yesterday_str)
         yesterday_actuals = [
-            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"]}
+            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
             for a in actuals_rows
         ]
         logger.info(f"Found {len(yesterday_actuals)} scored actuals for {yesterday_str}.")
@@ -143,14 +144,15 @@ def run_predictions():
 
     index_data = fetch_index_data()
     payload    = build_frontend_json(
-        today_predictions      = primary_predictions,
-        yesterday_predictions  = yesterday_predictions,
-        yesterday_actuals      = yesterday_actuals,
-        yesterday_date_str     = yesterday_str,
-        index_data             = index_data,
-        stock_data             = stock_data,
-        claude_predictions     = claude_predictions,
-        gemini_predictions     = gemini_predictions,
+        today_predictions          = primary_predictions,
+        yesterday_predictions      = yesterday_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = yesterday_str,
+        index_data                 = index_data,
+        stock_data                 = stock_data,
+        claude_predictions         = claude_predictions,
+        gemini_predictions         = gemini_predictions,
+        yesterday_open_prices_map  = yesterday_open_prices_map,
     )
 
     _finish(payload)
@@ -291,22 +293,24 @@ def run_market_open():
     if yesterday_predictions:
         actuals_rows = get_actuals_for_date(yesterday_str)
         yesterday_actuals = [
-            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"]}
+            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
             for a in actuals_rows
         ]
 
-    open_prices_map = get_open_prices_for_date(today_str)
+    today_prices_map     = get_open_prices_for_date(today_str)
+    yesterday_prices_map = get_open_prices_for_date(yesterday_str)
     index_data = fetch_index_data()
     payload    = build_frontend_json(
-        today_predictions      = today_predictions,
-        yesterday_predictions  = yesterday_predictions,
-        yesterday_actuals      = yesterday_actuals,
-        yesterday_date_str     = yesterday_str,
-        index_data             = index_data,
-        stock_data             = None,
-        claude_predictions     = None,
-        gemini_predictions     = today_predictions,
-        open_prices_map        = open_prices_map,
+        today_predictions          = today_predictions,
+        yesterday_predictions      = yesterday_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = yesterday_str,
+        index_data                 = index_data,
+        stock_data                 = None,
+        claude_predictions         = None,
+        gemini_predictions         = today_predictions,
+        today_open_prices_map      = today_prices_map,
+        yesterday_open_prices_map  = yesterday_prices_map,
     )
 
     _finish(payload)
@@ -362,10 +366,13 @@ def run_accuracy():
         logger.warning("Could not compute actuals for any ticker — skipping save/export.")
         return
 
-    save_actuals(today_str, actuals_pct, today_predictions)
+    save_actuals(today_str, actuals_pct, today_predictions, close_prices=actual_prices)
     logger.info(f"Saved actuals for {len(actuals_pct)} tickers under {today_str}.")
 
-    yesterday_actuals = [{"ticker": t, "actual_change_pct": pct} for t, pct in actuals_pct.items()]
+    yesterday_actuals = [
+        {"ticker": t, "actual_change_pct": pct, "close_price": actual_prices.get(t)}
+        for t, pct in actuals_pct.items()
+    ]
 
     # Re-export data.json so the site shows today's completed scoring tonight.
     # "today" block is reconstructed from the DB record — matches the current
@@ -374,19 +381,25 @@ def run_accuracy():
     # full_ranked_list is intentionally left empty here — refreshing ~100
     # tickers' price history again at EOD isn't worth doubling the stock-data
     # pull; it gets refreshed normally on tomorrow's predictions run.
+    # yesterday_date_str is today_str here (EOD scores TODAY's own predictions),
+    # so today's and yesterday's open-price checkpoint map are the same date.
     logger.info("Exporting updated data.json with today's completed accuracy...")
     from exporter import build_frontend_json, write_json, fetch_index_data
+    from database import get_open_prices_for_date
 
+    todays_open_prices_map = get_open_prices_for_date(today_str)
     index_data = fetch_index_data()
     payload    = build_frontend_json(
-        today_predictions      = today_predictions,
-        yesterday_predictions  = today_predictions,
-        yesterday_actuals      = yesterday_actuals,
-        yesterday_date_str     = today_str,
-        index_data             = index_data,
-        stock_data             = None,
-        claude_predictions     = None,
-        gemini_predictions     = today_predictions,
+        today_predictions          = today_predictions,
+        yesterday_predictions      = today_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = today_str,
+        index_data                 = index_data,
+        stock_data                 = None,
+        claude_predictions         = None,
+        gemini_predictions         = today_predictions,
+        today_open_prices_map      = todays_open_prices_map,
+        yesterday_open_prices_map  = todays_open_prices_map,
     )
 
     _finish(payload)

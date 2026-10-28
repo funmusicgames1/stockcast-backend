@@ -48,7 +48,8 @@ def build_frontend_json(
     stock_data: dict = None,
     claude_predictions: dict | None = None,
     gemini_predictions: dict | None = None,
-    open_prices_map: dict | None = None,
+    today_open_prices_map: dict | None = None,
+    yesterday_open_prices_map: dict | None = None,
 ) -> dict:
     """
     Assemble the full JSON payload the frontend needs.
@@ -60,20 +61,26 @@ def build_frontend_json(
     runs pass today's own date, since they're scoring today's predictions against
     today's close the same evening instead of waiting for tomorrow morning.
 
-    open_prices_map: {ticker: {"prev_close", "open_price", "gap_pct"}} from the
-    market-open checkpoint run (8:31 AM CST). None/missing on a normal morning
-    predictions run, since the market hasn't opened yet at 6 AM.
+    today_open_prices_map / yesterday_open_prices_map: {ticker: {"prev_close",
+    "open_price", "gap_pct"}} from the market-open checkpoint run (8:31 AM CST),
+    keyed to whichever calendar date each block actually needs — these are often
+    the SAME date (an EOD run's "yesterday" slot is today's own date) but not
+    always, so they're passed separately rather than assumed to match.
     """
 
-    # Build actuals lookup
-    actuals_map = {a["ticker"]: a["actual_change_pct"] for a in yesterday_actuals}
+    # Build actuals lookup — each entry carries both the % change and the raw
+    # closing price (close_price), so Historical Performance can show real
+    # dollar figures (Prev Close / Open / Close), not just percentages.
+    actuals_map = {a["ticker"]: a for a in yesterday_actuals}
 
     def enrich_with_actuals(entries: list, prediction_type: str) -> list:
         enriched = []
         for entry in entries:
-            ticker   = entry["ticker"]
-            actual   = actuals_map.get(ticker)
-            accuracy = None
+            ticker      = entry["ticker"]
+            actual_row  = actuals_map.get(ticker, {})
+            actual      = actual_row.get("actual_change_pct")
+            close_price = actual_row.get("close_price")
+            accuracy    = None
 
             if actual is not None:
                 predicted         = entry["predicted_change_pct"]
@@ -94,15 +101,16 @@ def build_frontend_json(
                 **entry,
                 "prediction_type": prediction_type,
                 "actual_change_pct": actual,
+                "close_price": close_price,
                 "accuracy_score": accuracy,
                 "outcome": outcome,
             })
         return enriched
 
-    def enrich_with_open_price(entries: list) -> list:
+    def enrich_with_open_price(entries: list, price_map: dict | None) -> list:
         enriched = []
         for entry in entries:
-            row = (open_prices_map or {}).get(entry["ticker"])
+            row = (price_map or {}).get(entry["ticker"])
             # prev_close is already attached by main.py at prediction time
             # (it's just yesterday's close, known at 6 AM) — only fall back
             # to the checkpoint row if the entry itself doesn't have it yet
@@ -130,10 +138,12 @@ def build_frontend_json(
     def build_yesterday_block(preds: dict | None) -> dict:
         if not preds:
             return {"winners": [], "losers": [], "has_actuals": False}
+        winners = enrich_with_open_price(enrich_with_actuals(preds.get("winners", []), "winner"), yesterday_open_prices_map)
+        losers  = enrich_with_open_price(enrich_with_actuals(preds.get("losers",  []), "loser"),  yesterday_open_prices_map)
         return {
             "date":        yesterday_date_str,
-            "winners":     enrich_with_actuals(preds.get("winners", []), "winner"),
-            "losers":      enrich_with_actuals(preds.get("losers",  []), "loser"),
+            "winners":     winners,
+            "losers":      losers,
             "has_actuals": len(actuals_map) > 0,
         }
 
@@ -149,14 +159,14 @@ def build_frontend_json(
             "date": today_cst().isoformat(),
             "claude": {
                 "market_summary": claude_predictions.get("market_summary", "") if claude_predictions else None,
-                "winners":        enrich_with_open_price(claude_predictions.get("winners", [])) if claude_predictions else [],
-                "losers":         enrich_with_open_price(claude_predictions.get("losers",  [])) if claude_predictions else [],
+                "winners":        enrich_with_open_price(claude_predictions.get("winners", []), today_open_prices_map) if claude_predictions else [],
+                "losers":         enrich_with_open_price(claude_predictions.get("losers",  []), today_open_prices_map) if claude_predictions else [],
                 "available":      claude_predictions is not None,
             },
             "gemini": {
                 "market_summary": gemini_predictions.get("market_summary", "") if gemini_predictions else None,
-                "winners":        enrich_with_open_price(gemini_predictions.get("winners", [])) if gemini_predictions else [],
-                "losers":         enrich_with_open_price(gemini_predictions.get("losers",  [])) if gemini_predictions else [],
+                "winners":        enrich_with_open_price(gemini_predictions.get("winners", []), today_open_prices_map) if gemini_predictions else [],
+                "losers":         enrich_with_open_price(gemini_predictions.get("losers",  []), today_open_prices_map) if gemini_predictions else [],
                 "available":      gemini_predictions is not None,
             },
         },

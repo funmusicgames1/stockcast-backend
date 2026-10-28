@@ -66,15 +66,18 @@ def save_predictions(predictions: dict) -> bool:
         return False
 
 
-def save_actuals(date_str: str, actuals_map: dict, predictions: dict) -> bool:
+def save_actuals(date_str: str, actuals_map: dict, predictions: dict, close_prices: dict = None) -> bool:
     """
     After market close, save the actual price changes alongside predictions.
 
-    actuals_map: {ticker: actual_close_price}
+    actuals_map: {ticker: actual_change_pct}
+    close_prices: {ticker: raw closing price} — optional, for displaying the
+    real dollar closing price in Historical Performance (not just the %).
     predictions: the prediction record for date_str
     """
     try:
         client = get_client()
+        close_prices = close_prices or {}
         rows = []
 
         for entry in predictions.get("winners", []):
@@ -85,6 +88,7 @@ def save_actuals(date_str: str, actuals_map: dict, predictions: dict) -> bool:
                     "ticker": ticker,
                     "predicted_change_pct": entry["predicted_change_pct"],
                     "actual_change_pct": actuals_map[ticker],
+                    "close_price": close_prices.get(ticker),
                     "prediction_type": "winner",
                 })
 
@@ -96,6 +100,7 @@ def save_actuals(date_str: str, actuals_map: dict, predictions: dict) -> bool:
                     "ticker": ticker,
                     "predicted_change_pct": entry["predicted_change_pct"],
                     "actual_change_pct": actuals_map[ticker],
+                    "close_price": close_prices.get(ticker),
                     "prediction_type": "loser",
                 })
 

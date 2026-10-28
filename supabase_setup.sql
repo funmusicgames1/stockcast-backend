@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS actuals (
     ticker              TEXT NOT NULL,
     predicted_change_pct FLOAT,
     actual_change_pct   FLOAT,
+    close_price         FLOAT,
     prediction_type     TEXT CHECK (prediction_type IN ('winner', 'loser')),
     created_at          TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(date, ticker)
