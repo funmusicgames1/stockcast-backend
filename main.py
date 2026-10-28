@@ -260,12 +260,12 @@ def run_fix_prev_close(date_str: str):
     entries = predictions.get("winners", []) + predictions.get("losers", [])
     tickers = [e["ticker"] for e in entries]
 
-    baseline_str = (datetime.strptime(date_str, "%Y-%m-%d").date() - _td(days=1)).isoformat()
+    baseline_str = (today_cst() - _td(days=1)).isoformat()
     actual_prices = fetch_actual_prices(tickers, baseline_str)
 
     if not actual_prices:
         for days_back in range(2, 7):
-            fallback_str = (datetime.strptime(date_str, "%Y-%m-%d").date() - _td(days=days_back)).isoformat()
+            fallback_str = (today_cst() - _td(days=days_back)).isoformat()
             actual_prices = fetch_actual_prices(tickers, fallback_str)
             if actual_prices:
                 logger.info(f"Using {fallback_str} as previous close (weekend/holiday fallback).")
