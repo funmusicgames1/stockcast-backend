@@ -48,6 +48,7 @@ def build_frontend_json(
     stock_data: dict = None,
     claude_predictions: dict | None = None,
     gemini_predictions: dict | None = None,
+    open_prices_map: dict | None = None,
 ) -> dict:
     """
     Assemble the full JSON payload the frontend needs.
@@ -58,6 +59,10 @@ def build_frontend_json(
     day, since that's the most recently fully-scored day on record. EOD (accuracy)
     runs pass today's own date, since they're scoring today's predictions against
     today's close the same evening instead of waiting for tomorrow morning.
+
+    open_prices_map: {ticker: {"prev_close", "open_price", "gap_pct"}} from the
+    market-open checkpoint run (8:31 AM CST). None/missing on a normal morning
+    predictions run, since the market hasn't opened yet at 6 AM.
     """
 
     # Build actuals lookup
@@ -94,6 +99,27 @@ def build_frontend_json(
             })
         return enriched
 
+    def enrich_with_open_price(entries: list) -> list:
+        enriched = []
+        for entry in entries:
+            row = (open_prices_map or {}).get(entry["ticker"])
+            prev_close = open_price = gap_pct = gap_captured_pct = None
+            if row:
+                prev_close = row.get("prev_close")
+                open_price = row.get("open_price")
+                gap_pct    = row.get("gap_pct")
+                predicted  = entry.get("predicted_change_pct")
+                if gap_pct is not None and predicted:
+                    gap_captured_pct = round((gap_pct / predicted) * 100, 1)
+            enriched.append({
+                **entry,
+                "prev_close":       prev_close,
+                "open_price":       open_price,
+                "gap_pct":          gap_pct,
+                "gap_captured_pct": gap_captured_pct,
+            })
+        return enriched
+
     # Enrich yesterday for each model separately
     def build_yesterday_block(preds: dict | None) -> dict:
         if not preds:
@@ -117,14 +143,14 @@ def build_frontend_json(
             "date": today_cst().isoformat(),
             "claude": {
                 "market_summary": claude_predictions.get("market_summary", "") if claude_predictions else None,
-                "winners":        claude_predictions.get("winners", [])         if claude_predictions else [],
-                "losers":         claude_predictions.get("losers",  [])         if claude_predictions else [],
+                "winners":        enrich_with_open_price(claude_predictions.get("winners", [])) if claude_predictions else [],
+                "losers":         enrich_with_open_price(claude_predictions.get("losers",  [])) if claude_predictions else [],
                 "available":      claude_predictions is not None,
             },
             "gemini": {
                 "market_summary": gemini_predictions.get("market_summary", "") if gemini_predictions else None,
-                "winners":        gemini_predictions.get("winners", [])         if gemini_predictions else [],
-                "losers":         gemini_predictions.get("losers",  [])         if gemini_predictions else [],
+                "winners":        enrich_with_open_price(gemini_predictions.get("winners", [])) if gemini_predictions else [],
+                "losers":         enrich_with_open_price(gemini_predictions.get("losers",  [])) if gemini_predictions else [],
                 "available":      gemini_predictions is not None,
             },
         },

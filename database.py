@@ -174,3 +174,35 @@ def get_recent_history(days: int = 30) -> list:
     except Exception as e:
         logger.error(f"Failed to fetch history: {e}")
         return []
+
+
+def save_open_prices(date_str: str, rows: list) -> bool:
+    """
+    Save market-open price checkpoints.
+    rows: [{"ticker": ..., "open_price": ..., "gap_pct": ...}, ...]
+    """
+    try:
+        client = get_client()
+        payload = [{"date": date_str, **row} for row in rows]
+        client.table("open_prices").upsert(payload, on_conflict="date,ticker").execute()
+        logger.info(f"Saved {len(payload)} open-price checkpoints for {date_str}.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save open prices: {e}")
+        return False
+
+
+def get_open_prices_for_date(date_str: str) -> dict:
+    """Fetch market-open price checkpoints for a date, keyed by ticker."""
+    try:
+        client = get_client()
+        result = (
+            client.table("open_prices")
+            .select("*")
+            .eq("date", date_str)
+            .execute()
+        )
+        return {row["ticker"]: row for row in (result.data or [])}
+    except Exception as e:
+        logger.error(f"Failed to fetch open prices for {date_str}: {e}")
+        return {}

@@ -38,8 +38,21 @@ YF_HEADERS = {
 FMP_BASE = "https://financialmodelingprep.com/api/v3"
 ABORT_THRESHOLD = 100  # abort pipeline if more than this many tickers fail both sources
 
+# Yahoo doesn't use plain index tickers the way you'd expect — "SPX" is
+# actually a real, unrelated company (SPX Technologies), not the S&P 500
+# index. The index needs Yahoo's own symbol (^GSPC). Applied only at the
+# URL-fetch step; everywhere else (stock_data keys, Supabase rows, JSON
+# output) keeps using "SPX" as the display/storage ticker.
+YF_SYMBOL_ALIAS = {"SPX": "^GSPC"}
+
+
+def _yf_symbol(ticker: str) -> str:
+    return YF_SYMBOL_ALIAS.get(ticker, ticker)
+
 # ── Stock universe ─────────────────────────────────────────────────────────────
 STOCK_UNIVERSE = [
+    # Broad market indices / ETFs
+    "SPY", "QQQ", "SPX",
     # Mega cap tech
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "ORCL", "IBM", "ADBE",
     # Semiconductors
@@ -126,7 +139,7 @@ def _fetch_yf(ticker: str, days: int = 90) -> dict | None:
     """Fetch OHLCV from Yahoo Finance v8 API. Returns closes+volumes or None."""
     end_ts   = int(datetime.today().timestamp())
     start_ts = int((datetime.today() - timedelta(days=days)).timestamp())
-    url      = f"{YF_BASE}{ticker}"
+    url      = f"{YF_BASE}{_yf_symbol(ticker)}"
     params   = {"period1": start_ts, "period2": end_ts, "interval": "1d",
                  "includePrePost": "false", "events": "div,splits"}
     try:
@@ -382,7 +395,7 @@ def fetch_actual_prices(tickers: list, date_str: str) -> dict:
     # wants that). Exact-date matching keeps "no data for this date" visibly
     # missing so it gets handled deliberately instead of silently wrong.
     for ticker in tickers:
-        url    = f"{YF_BASE}{ticker}"
+        url    = f"{YF_BASE}{_yf_symbol(ticker)}"
         params = {"period1": start_ts, "period2": end_ts, "interval": "1d", "includePrePost": "false"}
         try:
             resp = _SESSION.get(url, headers=YF_HEADERS, params=params, timeout=15)

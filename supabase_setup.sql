@@ -25,22 +25,42 @@ CREATE TABLE IF NOT EXISTS actuals (
     UNIQUE(date, ticker)
 );
 
+-- Table 3: Market-open price checkpoint (how much of the predicted move
+-- already happened by the time the market opened, before the first trade
+-- could realistically be placed)
+CREATE TABLE IF NOT EXISTS open_prices (
+    id          BIGSERIAL PRIMARY KEY,
+    date        DATE NOT NULL,
+    ticker      TEXT NOT NULL,
+    prev_close  FLOAT,
+    open_price  FLOAT,
+    gap_pct     FLOAT,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, ticker)
+);
+
 -- Indexes for fast date-based queries
 CREATE INDEX IF NOT EXISTS idx_predictions_date ON predictions(date DESC);
 CREATE INDEX IF NOT EXISTS idx_actuals_date ON actuals(date DESC);
 CREATE INDEX IF NOT EXISTS idx_actuals_ticker ON actuals(ticker);
+CREATE INDEX IF NOT EXISTS idx_open_prices_date ON open_prices(date DESC);
 
 -- Enable Row Level Security (RLS) — allow public read, restrict writes to service role
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE actuals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE open_prices ENABLE ROW LEVEL SECURITY;
 
 -- Allow anyone to read (your frontend will read data.json, but just in case)
 CREATE POLICY "Public read predictions" ON predictions FOR SELECT USING (true);
 CREATE POLICY "Public read actuals"     ON actuals     FOR SELECT USING (true);
+CREATE POLICY "Public read open_prices" ON open_prices FOR SELECT USING (true);
 
 -- Only allow inserts/updates from authenticated service role (your backend)
 CREATE POLICY "Service write predictions" ON predictions
     FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Service write actuals" ON actuals
+    FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service write open_prices" ON open_prices
     FOR ALL USING (auth.role() = 'service_role');

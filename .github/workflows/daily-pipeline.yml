@@ -2,9 +2,14 @@ name: StockCast Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 12 * * 1-5'   # 12:00 UTC = 6:00 AM CST — morning predictions run
-    - cron: '0 22 * * 1-5'   # 22:00 UTC = ~5/6 PM ET (buffer after 4 PM ET close) — EOD accuracy run
-  workflow_dispatch:           # Allow manual trigger from GitHub Actions tab
+    - cron: '0 12 * * 1-5'    # 12:00 UTC = 6:00 AM CST — morning predictions run
+    - cron: '31 13 * * 1-5'   # 13:31 UTC = 9:31 AM ET during daylight saving (EDT)
+    - cron: '31 14 * * 1-5'   # 14:31 UTC = 9:31 AM ET during standard time (EST)
+                               # ^ both target market open; main.py checks the real
+                               #   ET clock and no-ops on whichever one is "wrong"
+                               #   for the current DST state — see run_market_open()
+    - cron: '0 22 * * 1-5'    # 22:00 UTC = ~5/6 PM ET (buffer after 4 PM ET close) — EOD accuracy run
+  workflow_dispatch:            # Allow manual trigger from GitHub Actions tab
     inputs:
       mode:
         description: 'Which pipeline mode to run'
@@ -13,6 +18,7 @@ on:
         type: choice
         options:
           - predictions
+          - market_open
           - accuracy
           - backfill
       backfill_file:
@@ -43,8 +49,11 @@ jobs:
       - name: Determine mode
         id: mode
         run: |
-          if [ "${{ github.event.schedule }}" = "0 22 * * 1-5" ]; then
+          SCHEDULE="${{ github.event.schedule }}"
+          if [ "$SCHEDULE" = "0 22 * * 1-5" ]; then
             echo "value=accuracy" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "31 13 * * 1-5" ] || [ "$SCHEDULE" = "31 14 * * 1-5" ]; then
+            echo "value=market_open" >> "$GITHUB_OUTPUT"
           else
             echo "value=${{ github.event.inputs.mode || 'predictions' }}" >> "$GITHUB_OUTPUT"
           fi

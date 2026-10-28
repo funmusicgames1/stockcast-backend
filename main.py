@@ -182,6 +182,122 @@ def run_backfill(json_path: str):
     run_accuracy()
 
 
+def run_market_open():
+    """
+    Checkpoint run right at market open (9:30 AM ET / 8:30 AM CT — these are
+    always exactly 1 hour apart year-round, since ET and CT shift DST on the
+    same date). Purpose: for options trading specifically, a lot of the
+    predicted move can already happen in the first few minutes of trading —
+    this records that gap so it's visible instead of hidden.
+
+    Scheduled via TWO cron triggers an hour apart (to survive the UTC/DST
+    mismatch GitHub Actions cron can't express), but only the one that
+    actually lands within a few minutes of real market open does anything —
+    the other exits immediately. No new AI call, no new predictions — just
+    a price snapshot against predictions already saved this morning.
+    """
+    import pytz
+    from datetime import datetime as _dt
+
+    et     = pytz.timezone("America/New_York")
+    now_et = _dt.now(et)
+
+    if now_et.weekday() >= 5:
+        logger.info(f"{now_et.strftime('%A')} — market closed. Exiting (expected on weekends).")
+        return
+
+    minutes_since_midnight = now_et.hour * 60 + now_et.minute
+    market_open_minutes    = 9 * 60 + 30
+    if not (market_open_minutes - 2 <= minutes_since_midnight <= market_open_minutes + 10):
+        logger.info(
+            f"Current ET time is {now_et.strftime('%H:%M')} — not within the market-open "
+            f"window. Exiting (expected: this is one of two DST-safety cron firings)."
+        )
+        return
+
+    logger.info("=" * 60)
+    logger.info("StockCast MARKET-OPEN checkpoint starting...")
+    logger.info(f"ET time: {now_et.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=" * 60)
+
+    from database import get_predictions_for_date, save_open_prices, get_open_prices_for_date, get_actuals_for_date
+    from fetcher import fetch_actual_prices
+
+    today_str = today_cst().isoformat()
+    today_predictions = get_predictions_for_date(today_str)
+
+    if not today_predictions:
+        logger.warning(f"No predictions on record for {today_str} — nothing to checkpoint.")
+        return
+
+    all_tickers = (
+        [e["ticker"] for e in today_predictions.get("winners", [])] +
+        [e["ticker"] for e in today_predictions.get("losers",  [])]
+    )
+    if not all_tickers:
+        logger.warning("Today's prediction record has no tickers — nothing to checkpoint.")
+        return
+
+    yesterday_str = (today_cst() - timedelta(days=1)).isoformat()
+    open_prices   = fetch_actual_prices(all_tickers, today_str)      # live price right now, at the open
+    prev_prices   = fetch_actual_prices(all_tickers, yesterday_str)  # yesterday's close (baseline)
+
+    if not prev_prices:
+        for days_back in range(2, 7):
+            fallback_str = (today_cst() - timedelta(days=days_back)).isoformat()
+            prev_prices  = fetch_actual_prices(all_tickers, fallback_str)
+            if prev_prices:
+                logger.info(f"Using {fallback_str} as previous close (weekend/holiday fallback).")
+                break
+
+    rows = []
+    for ticker in all_tickers:
+        if ticker in open_prices and ticker in prev_prices and prev_prices[ticker] > 0:
+            gap_pct = ((open_prices[ticker] - prev_prices[ticker]) / prev_prices[ticker]) * 100
+            rows.append({
+                "ticker":     ticker,
+                "prev_close": prev_prices[ticker],
+                "open_price": open_prices[ticker],
+                "gap_pct":    round(gap_pct, 2),
+            })
+            logger.info(f"  {ticker}: prev_close={prev_prices[ticker]}, open={open_prices[ticker]}, gap={gap_pct:+.2f}%")
+
+    if not rows:
+        logger.warning("Could not compute any open-price checkpoints — skipping save/export.")
+        return
+
+    save_open_prices(today_str, rows)
+    logger.info(f"Saved {len(rows)} open-price checkpoints under {today_str}.")
+
+    logger.info("Exporting updated data.json with market-open checkpoint...")
+    from exporter import build_frontend_json, fetch_index_data
+
+    yesterday_predictions = get_predictions_for_date(yesterday_str)
+    yesterday_actuals = []
+    if yesterday_predictions:
+        actuals_rows = get_actuals_for_date(yesterday_str)
+        yesterday_actuals = [
+            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"]}
+            for a in actuals_rows
+        ]
+
+    open_prices_map = get_open_prices_for_date(today_str)
+    index_data = fetch_index_data()
+    payload    = build_frontend_json(
+        today_predictions      = today_predictions,
+        yesterday_predictions  = yesterday_predictions,
+        yesterday_actuals      = yesterday_actuals,
+        yesterday_date_str     = yesterday_str,
+        index_data             = index_data,
+        stock_data             = None,
+        claude_predictions     = None,
+        gemini_predictions     = today_predictions,
+        open_prices_map        = open_prices_map,
+    )
+
+    _finish(payload)
+
+
 def run_accuracy():
     logger.info("=" * 60)
     logger.info("StockCast ACCURACY (end-of-day) run starting...")
@@ -330,12 +446,14 @@ def push_to_github(json_path: str) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["predictions", "accuracy", "backfill"], default="predictions")
+    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill"], default="predictions")
     parser.add_argument("--file", help="JSON file path for --mode backfill (see backfill_data/)")
     args = parser.parse_args()
 
     if args.mode == "predictions":
         run_predictions()
+    elif args.mode == "market_open":
+        run_market_open()
     elif args.mode == "accuracy":
         run_accuracy()
     elif args.mode == "backfill":
