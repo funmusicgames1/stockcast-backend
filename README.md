@@ -1,124 +1,210 @@
-# MarketPulse — Backend
+# StockCast — Backend
 
-AI-powered daily stock prediction engine. Runs once daily at 6:00 AM CST, outputs a `data.json` file that the frontend reads.
+AI-powered daily stock prediction engine with same-day market-open and
+end-of-day scoring. Writes `data.json`, which the frontend
+(`stockcast-frontend` repo, served on Vercel) reads directly.
 
 ---
 
 ## Architecture
 
 ```
-yfinance (free)  ──┐
-                   ├──► main.py ──► Anthropic Claude ──► Supabase DB
-NewsAPI (free)   ──┘                                  └──► data.json ──► Frontend
+Yahoo Finance (free)  ──┐
+FMP (fallback)        ──┼──► main.py ──► Claude + Gemini (parallel) ──► Supabase
+NewsAPI (free)         ──┘                                          └──► data.json ──► GitHub (frontend repo) ──► Vercel
 ```
 
-**Pipeline (runs daily at 6 AM CST):**
-1. Fetch 3 months of price history for ~50 stocks via yfinance
-2. Fetch macro + sector news via NewsAPI
-3. Send all data to Claude → get top 10 winners + losers with % predictions
-4. Save predictions to Supabase
-5. Fetch yesterday's actual prices, calculate accuracy, save to Supabase
-6. Write `data.json` for the frontend to consume
+The pipeline runs in **three separate modes on three separate schedules**,
+not one daily run:
+
+| Mode | When | What it does |
+|---|---|---|
+| `predictions` | 7:00 AM ET, weekdays | Fetch stock data + news, call Claude & Gemini, save today's predictions |
+| `market_open` | 9:31 AM ET, weekdays | Snapshot each ticker's real price ~1 min after the market opens, record the gap vs. prior close — for options trading, a lot of a predicted move can already happen before you can trade it |
+| `accuracy` | 6:00 PM ET, weekdays | Score *today's own* predictions against today's real close — same evening, not the next morning |
+
+**Why three separate runs instead of one**: the original design scored
+*yesterday's* predictions each morning, a full day behind. Splitting it
+this way means Historical Performance shows a day's result the same
+evening it happened.
+
+### Scheduling: cron-job.org, not GitHub's native `schedule:` trigger
+
+**GitHub Actions' built-in cron scheduler has been unreliable since
+2026-08-26** (a known, widely-reported platform issue — see GitHub
+community discussions #205984, #206019). Scheduled runs were arriving
+hours late or not at all, while manual `workflow_dispatch` always worked
+instantly.
+
+The actual fix: an external cron service, **[cron-job.org](https://cron-job.org)**
+(free account under this project), calls GitHub's `workflow_dispatch` API
+directly on a reliable clock, bypassing the broken native scheduler
+entirely:
+
+```
+POST https://api.github.com/repos/funmusicgames1/stockcast-backend/actions/workflows/daily-pipeline.yml/dispatches
+Authorization: Bearer <GitHub PAT, repo scope>
+Body: {"ref":"main","inputs":{"mode":"predictions"}}
+```
+
+Three jobs are configured there, each in the `America/New_York` timezone
+(cron-job.org handles DST natively — no manual adjustment needed across
+the Nov 1 / March transitions):
+
+- **StockCast - Morning Predictions** — 7:00 AM ET, weekdays
+- **StockCast - Market Open Checkpoint** — 9:31 AM ET, weekdays
+- **StockCast - EOD Accuracy** — 6:00 PM ET, weekdays
+
+The old `on: schedule:` cron entries are still present in
+`.github/workflows/daily-pipeline.yml` as a harmless backup — if GitHub's
+scheduler ever fires one, it's a no-op or a redundant (idempotent) rerun,
+never harmful. They're not the primary trigger anymore.
+
+### CST-aware dates, not bare `date.today()`
+
+GitHub Actions runners run in UTC. A run executing near UTC midnight
+(e.g. a manual trigger late at night) could land on the wrong calendar
+day if dates were computed naively. `datetime_utils.today_cst()` is used
+everywhere a "today"/"yesterday" label is needed — it resolves the
+*actual* America/Chicago calendar date regardless of what time in UTC
+the job happens to run.
+
+---
+
+## Modes, in detail
+
+Run any mode manually: `python main.py --mode <mode>` (or trigger via
+GitHub Actions' "Run workflow" button / `gh workflow run`).
+
+- **`predictions`** — the 6-step morning pipeline (fetch stock data →
+  news → AI → save → read back yesterday's already-scored results →
+  export). The time-window guard (only run near 7 AM ET) is skipped for
+  manual/`workflow_dispatch` triggers — only enforced for the automated
+  `schedule` trigger (checked via a `TRIGGER_EVENT` env var), so manual
+  runs/testing are never blocked by the clock.
+- **`market_open`** — price checkpoint, same manual-bypass behavior as
+  above. No new AI call.
+- **`accuracy`** — scores today's own predictions against today's real
+  close, saves `actuals` (including the raw `close_price`, not just the
+  %), re-exports.
+- **`backfill --file <path>`** — disaster-recovery only: restores a
+  prediction set that was **genuinely generated** (e.g. visible live on
+  the site) but never saved to Supabase (e.g. a DB outage at save time).
+  Never for inventing a prediction after the fact — that would defeat
+  the whole point of tracking real predictive accuracy.
+- **`backfill_open --file <path> --date YYYY-MM-DD`** — historical
+  market-open backfill for a day that predates the `market_open`
+  feature. Unlike predictions, an opening price is an objective market
+  fact, not a forecast — looking it up after the fact via Yahoo's
+  1-minute bars (available for roughly the last 30 days) carries none of
+  the integrity concerns backfilling a prediction would.
+- **`fix_prev_close --date YYYY-MM-DD`** — one-off correction for a
+  wrong `prev_close` baseline on an already-saved day, without touching
+  the actual AI-generated `predicted_change_pct`/`reason`/`company`.
+  Only supports `today_cst()` — `save_predictions()` always writes under
+  today's date internally, so this would corrupt a different day if used
+  on one.
+
+---
+
+## Known issues (as of this writing)
+
+- **`ANTHROPIC_API_KEY` is invalid** — every Claude call fails with
+  `401 invalid x-api-key`. The pipeline degrades gracefully (Gemini-only
+  output, `claude.available: false` in `data.json`), but Claude
+  predictions have been absent since this started. Needs a fresh key
+  from console.anthropic.com.
+- **GitHub's native scheduler** — see above. The cron-job.org jobs are
+  the real fix; the old `on: schedule:` entries are vestigial.
 
 ---
 
 ## Setup Guide
 
-### Step 1 — Get Your API Keys
+### Step 1 — API Keys
 
-**Anthropic API Key**
-1. Go to [console.anthropic.com](https://console.anthropic.com)
-2. Sign up / log in → API Keys → Create Key
-3. Copy the key
+- **Anthropic**: console.anthropic.com → API Keys (currently broken, see
+  Known Issues)
+- **Gemini**: aistudio.google.com → Get API key
+- **NewsAPI**: newsapi.org → free tier, 100 req/day
+- **FMP**: financialmodelingprep.com → free tier (stock fallback only;
+  index data now comes from Yahoo, not FMP — FMP's `/quote` endpoint
+  403s on index symbols like `^GSPC` on the free tier)
+- **Supabase**: supabase.com → New Project → Settings → API → copy the
+  **service_role** key specifically, not the anon/public one (the RLS
+  policies require it) → SQL Editor → run `supabase_setup.sql`
+- **Firebase** (optional, push notifications): Firebase Console → Project
+  Settings → Service Accounts → generate a key
+- **cron-job.org**: free account → Settings → API → generate an API key
+  (only needed if recreating the scheduled jobs)
+- **GitHub PAT**: Settings → Developer settings → Tokens (classic) →
+  `repo` scope, used both for pushing `data.json` to the frontend repo
+  and for cron-job.org's `workflow_dispatch` calls
 
-**NewsAPI Key**
-1. Go to [newsapi.org](https://newsapi.org)
-2. Sign up for free → copy your API key (100 requests/day free)
+### Step 2 — Environment variables (GitHub Actions secrets)
 
-**Supabase**
-1. Go to [supabase.com](https://supabase.com) → New Project
-2. Once created: Settings → API
-3. Copy **Project URL** and **anon public key**
-4. Go to SQL Editor → paste contents of `supabase_setup.sql` → Run
+```
+ANTHROPIC_API_KEY
+GEMINI_API_KEY
+NEWS_API_KEY
+FMP_API_KEY
+SUPABASE_URL
+SUPABASE_KEY        # service_role key, not anon
+GITHUB_TOKEN        # PAT_TOKEN secret, repo scope
+FRONTEND_REPO       # e.g. funmusicgames1/stockcast-frontend
+FIREBASE_PROJECT_ID
+FIREBASE_CLIENT_EMAIL
+FIREBASE_PRIVATE_KEY
+OUTPUT_JSON_PATH    # ./data.json
+```
 
----
-
-### Step 2 — Configure Environment
+### Step 3 — Test locally
 
 ```bash
-cp .env.example .env
-```
-
-Edit `.env` and fill in all four values:
-```
-ANTHROPIC_API_KEY=sk-ant-...
-NEWS_API_KEY=abc123...
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_KEY=eyJ...
-OUTPUT_JSON_PATH=./data.json
-```
-
----
-
-### Step 3 — Test Locally
-
-```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the pipeline once
-python main.py
+python main.py --mode predictions
 ```
 
-You should see logs for each step. On success, a `data.json` file will be created.
+### Step 4 — Deployment
 
----
+Runs entirely on **GitHub Actions** (not Railway — the project moved off
+Railway at some point before this documentation was last accurate).
+Triggered by cron-job.org as described above, or manually via
+`workflow_dispatch`.
 
-### Step 4 — Deploy to Railway
+### Step 5 — Frontend
 
-1. Push this folder to a GitHub repository:
-```bash
-git init
-git add .
-git commit -m "Initial backend"
-git remote add origin https://github.com/YOUR_USERNAME/marketpulse-backend.git
-git push -u origin main
-```
-
-2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
-3. Select your repository
-4. Go to **Variables** tab and add all four environment variables from your `.env`
-5. Also set: `OUTPUT_JSON_PATH=/app/data.json`
-
-Railway will automatically detect `railway.toml` and schedule the cron at `0 12 * * *` (12:00 UTC = 6:00 AM CST).
-
----
-
-### Step 5 — Connect Frontend to data.json
-
-The backend writes `data.json` after every run. Your frontend needs to fetch this file.
-
-**Option A (simplest):** Host `data.json` as a static file on Vercel alongside your frontend HTML. Update the frontend JS to `fetch('/data.json')` and render the data dynamically.
-
-**Option B:** Use Railway's public URL — your backend can also serve `data.json` via a tiny HTTP server. Add this to `main.py` after the pipeline completes if needed.
+`stockcast-frontend` repo serves `index.html` + `data.json` on Vercel.
+Every pipeline run pushes a fresh `data.json` via the GitHub Contents
+API, which triggers a Vercel redeploy automatically.
 
 ---
 
 ## File Structure
 
 ```
-marketpulse-backend/
-├── main.py              # Orchestrator — runs the full pipeline
-├── fetcher.py           # yfinance stock data fetcher
-├── news.py              # NewsAPI news + sentiment fetcher
-├── analyzer.py          # Anthropic Claude AI predictions
-├── database.py          # Supabase read/write layer
-├── exporter.py          # Builds and writes data.json
-├── supabase_setup.sql   # Run once in Supabase SQL editor
-├── railway.toml         # Railway deployment + cron config
-├── requirements.txt     # Python dependencies
-├── .env.example         # Environment variable template
-├── .gitignore           # Keeps .env and data.json out of git
+stockcast-backend/
+├── main.py              # Orchestrator — all 6 modes live here
+├── fetcher.py            # Yahoo Finance + FMP fallback; symbol-alias
+│                          # layer (SPX -> ^GSPC); historical open-price
+│                          # lookup (1-minute bars)
+├── news.py                # NewsAPI news + sentiment fetcher
+├── analyzer.py            # Claude + Gemini predictions, run in parallel
+├── database.py            # Supabase read/write layer (predictions,
+│                          # actuals, open_prices)
+├── exporter.py             # Builds data.json; enriches with open-price
+│                          # and actuals data
+├── datetime_utils.py      # today_cst() — CST-aware date, used instead
+│                          # of bare date.today() everywhere
+├── backfill_data/          # JSON files used by --mode backfill /
+│                          # backfill_open (one per backfilled date)
+├── supabase_setup.sql      # Run once (or incrementally) in Supabase
+│                          # SQL editor — predictions, actuals,
+│                          # open_prices tables + RLS policies
+├── .github/workflows/
+│   └── daily-pipeline.yml  # workflow_dispatch + vestigial schedule:
+│                          # entries (see Scheduling above)
+├── requirements.txt
 └── README.md
 ```
 
@@ -126,48 +212,61 @@ marketpulse-backend/
 
 ## data.json Structure
 
-The frontend consumes this file:
-
 ```json
 {
-  "generated_at": "2026-02-24T06:00:00-06:00",
+  "generated_at": "2026-10-28T20:36:20-0500",
   "today": {
-    "date": "2026-02-24",
-    "market_summary": "Tech momentum continues amid...",
-    "winners": [
-      {
-        "rank": 1,
-        "ticker": "NVDA",
-        "company": "NVIDIA Corp",
-        "sector": "Semiconductors",
-        "predicted_change_pct": 3.2,
-        "reason": "AI demand + earnings beat"
-      }
-    ],
-    "losers": [...]
+    "date": "2026-10-29",
+    "claude": { "market_summary": null, "winners": [], "losers": [], "available": false },
+    "gemini": {
+      "market_summary": "...",
+      "available": true,
+      "winners": [
+        {
+          "rank": 1, "ticker": "SOFI", "company": "SoFi Technologies, Inc.",
+          "sector": "Finance", "predicted_change_pct": 8.5, "reason": "...",
+          "prev_close": 16.4,
+          "open_price": 16.92,
+          "gap_pct": 3.17
+        }
+      ],
+      "losers": [...]
+    }
   },
   "yesterday": {
-    "date": "2026-02-23",
-    "winners": [
-      {
-        "rank": 1,
-        "ticker": "NVDA",
-        "predicted_change_pct": 3.8,
-        "actual_change_pct": 4.5,
-        "accuracy_score": 92,
-        "outcome": "beat"
-      }
-    ],
-    "losers": [...],
-    "has_actuals": true
+    "date": "2026-10-28",
+    "gemini": {
+      "has_actuals": true,
+      "winners": [
+        {
+          "rank": 1, "ticker": "SOFI", "predicted_change_pct": 8.5,
+          "prev_close": 16.4, "open_price": 16.92, "gap_pct": 3.17,
+          "close_price": 17.14, "actual_change_pct": 4.51,
+          "accuracy_score": 60, "outcome": "close"
+        }
+      ],
+      "losers": [...]
+    }
   },
   "indices": {
-    "sp500":  { "value": 5842.3, "change_pct": 0.74, "direction": "up" },
-    "nasdaq": { "value": 18310.6, "change_pct": 1.12, "direction": "up" },
-    "dow":    { "value": 42156.0, "change_pct": -0.23, "direction": "down" }
-  }
+    "sp500":  { "value": 7722.6, "change_pct": 0.6, "direction": "up" },
+    "nasdaq": { "value": 26477.81, "change_pct": 1.18, "direction": "up" },
+    "dow":    { "value": 52377.57, "change_pct": 0.03, "direction": "up" }
+  },
+  "full_ranked_list": [...]
 }
 ```
+
+Notes on fields that are new since the original design:
+- `prev_close` is attached at prediction time (6 AM) — it's just
+  yesterday's close, no need to wait for market open.
+- `open_price` / `gap_pct` stay `null` until the 9:31 AM checkpoint
+  actually runs. `gap_pct` is the **plain** % move from prev close to
+  open — not a ratio against the predicted target (an earlier version
+  computed that ratio and it read as a bug when it exceeded 100%, so it
+  was replaced with the plain gap).
+- `close_price` on a scored (`yesterday`) entry is the real closing
+  price used to compute `actual_change_pct`.
 
 ---
 
@@ -175,16 +274,22 @@ The frontend consumes this file:
 
 | Service | Cost |
 |---|---|
-| yfinance | Free forever |
+| Yahoo Finance | Free forever |
+| FMP | Free tier |
 | NewsAPI | Free (100 req/day) |
 | Supabase | Free (500MB) |
-| Railway | Free tier |
-| Anthropic API | ~$0.05–0.15/day |
+| GitHub Actions | Free tier (public/private repo minutes) |
+| cron-job.org | Free |
+| Gemini API | Free tier covers current volume |
+| Anthropic API | Currently $0 — key is broken, not being charged |
 
-**Total: ~$1.50–4.50/month** (Anthropic API only)
+**Total: effectively $0/month** right now, since Claude isn't actually
+running. Budget ~$1.50-4.50/month again once a valid Anthropic key is
+added.
 
 ---
 
 ## Disclaimer
 
-This tool is for informational purposes only. AI predictions are not financial advice. Never invest based solely on automated predictions.
+This tool is for informational purposes only. AI predictions are not
+financial advice. Never invest based solely on automated predictions.
