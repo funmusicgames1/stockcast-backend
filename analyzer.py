@@ -140,7 +140,7 @@ def _run_claude(prompt: str) -> dict | None:
 
 
 def _run_gemini(prompt: str) -> dict | None:
-    """Call Google Gemini API and return parsed predictions. Retries once on 429."""
+    """Call Google Gemini API and return parsed predictions. Retries on 429 (rate limit) and 503 (service unavailable/high demand)."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.error("GEMINI_API_KEY not set — skipping Gemini")
@@ -171,9 +171,11 @@ def _run_gemini(prompt: str) -> dict | None:
                 return result
             except Exception as e:
                 err_str = str(e)
-                if "429" in err_str and attempt < 2:
+                retryable = "429" in err_str or "503" in err_str or "UNAVAILABLE" in err_str
+                if retryable and attempt < 2:
                     wait = 30 * (attempt + 1)
-                    logger.warning(f"[Gemini] Rate limited (429). Waiting {wait}s before retry...")
+                    reason = "Rate limited (429)" if "429" in err_str else "Service unavailable/high demand (503)"
+                    logger.warning(f"[Gemini] {reason}. Waiting {wait}s before retry...")
                     time.sleep(wait)
                 else:
                     raise
