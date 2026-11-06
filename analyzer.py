@@ -149,7 +149,11 @@ def _run_gemini(prompt: str) -> dict | None:
         import time
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=api_key)
+        # thinking_config below requires the v1beta API -- the SDK's default
+        # (v1) started rejecting it with "Thinking is not enabled for api
+        # version v1" after a google-genai library update (requirements.txt
+        # pins >=1.0.0 with no upper bound, so this can shift under us again).
+        client = genai.Client(api_key=api_key, http_options=types.HttpOptions(api_version="v1beta"))
 
         for attempt in range(3):  # up to 3 attempts
             try:
