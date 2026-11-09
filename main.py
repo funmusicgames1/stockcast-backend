@@ -39,6 +39,19 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
+def _find_last_predictions_date(get_predictions_for_date, max_days_back: int = 7) -> str:
+    """Walk back from calendar-yesterday until a date with saved predictions
+    is found. Plain `today_cst() - timedelta(days=1)` breaks on weekends/
+    holidays -- e.g. Monday's calendar-yesterday is Sunday, which never ran,
+    leaving Historical Performance blank instead of showing Friday's real
+    results."""
+    for days_back in range(1, max_days_back + 1):
+        candidate = (today_cst() - timedelta(days=days_back)).isoformat()
+        if get_predictions_for_date(candidate):
+            return candidate
+    return (today_cst() - timedelta(days=1)).isoformat()
+
+
 def run_predictions():
     # Scheduled via two cron triggers an hour apart (11:00 + 12:00 UTC) to
     # target 7:00 AM ET year-round despite GitHub Actions cron having no DST
@@ -151,7 +164,7 @@ def run_predictions():
     #   compute here, just surface it for the Historical Performance view)
     # ----------------------------------------------------------------
     logger.info("Step 5/6: Reading yesterday's scored results...")
-    yesterday_str = (today_cst() - timedelta(days=1)).isoformat()
+    yesterday_str = _find_last_predictions_date(get_predictions_for_date)
     yesterday_predictions = get_predictions_for_date(yesterday_str)
     yesterday_actuals = []
     yesterday_open_prices_map = get_open_prices_for_date(yesterday_str)
@@ -496,23 +509,27 @@ def run_market_open():
     logger.info("Exporting updated data.json with market-open checkpoint...")
     from exporter import build_frontend_json, fetch_index_data
 
-    yesterday_predictions = get_predictions_for_date(yesterday_str)
+    # Separate lookup from the baseline-price yesterday_str above -- this one
+    # is for the Historical Performance display and needs to land on the last
+    # date that actually has saved predictions (skipping weekends/holidays).
+    display_yesterday_str = _find_last_predictions_date(get_predictions_for_date)
+    yesterday_predictions = get_predictions_for_date(display_yesterday_str)
     yesterday_actuals = []
     if yesterday_predictions:
-        actuals_rows = get_actuals_for_date(yesterday_str)
+        actuals_rows = get_actuals_for_date(display_yesterday_str)
         yesterday_actuals = [
             {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
             for a in actuals_rows
         ]
 
     today_prices_map     = get_open_prices_for_date(today_str)
-    yesterday_prices_map = get_open_prices_for_date(yesterday_str)
+    yesterday_prices_map = get_open_prices_for_date(display_yesterday_str)
     index_data = fetch_index_data()
     payload    = build_frontend_json(
         today_predictions          = today_predictions,
         yesterday_predictions      = yesterday_predictions,
         yesterday_actuals          = yesterday_actuals,
-        yesterday_date_str         = yesterday_str,
+        yesterday_date_str         = display_yesterday_str,
         index_data                 = index_data,
         stock_data                 = None,
         claude_predictions         = None,
