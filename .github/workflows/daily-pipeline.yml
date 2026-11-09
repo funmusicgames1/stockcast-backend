@@ -1,20 +1,18 @@
 name: StockCast Daily Pipeline
 
 on:
-  schedule:
-    - cron: '0 11 * * 1-5'    # 11:00 UTC = 7:00 AM ET during daylight saving (EDT)
-    - cron: '0 12 * * 1-5'    # 12:00 UTC = 7:00 AM ET during standard time (EST)
-                               # ^ both target the morning predictions run at 7:00 AM
-                               #   ET; main.py checks the real ET clock and no-ops
-                               #   on whichever one is "wrong" for the current DST
-                               #   state — see the guard at the top of run_predictions()
-    - cron: '31 13 * * 1-5'   # 13:31 UTC = 9:31 AM ET during daylight saving (EDT)
-    - cron: '31 14 * * 1-5'   # 14:31 UTC = 9:31 AM ET during standard time (EST)
-                               # ^ both target market open; main.py checks the real
-                               #   ET clock and no-ops on whichever one is "wrong"
-                               #   for the current DST state — see run_market_open()
-    - cron: '0 22 * * 1-5'    # 22:00 UTC = ~5/6 PM ET (buffer after 4 PM ET close) — EOD accuracy run
-  workflow_dispatch:            # Allow manual trigger from GitHub Actions tab
+  # No `schedule:` trigger here on purpose. GitHub Actions' native cron has
+  # been confirmed broken platform-wide since 2026-08-26 (see community
+  # discussions #205984, #206019, #201436, #158641, #185355) -- it doesn't
+  # just run late, it fires hours-delayed at unpredictable times in
+  # predictions mode, each firing overwriting that day's real predictions
+  # with a fresh non-deterministic AI call and desyncing it from the
+  # already-captured market-open checkpoint and EOD actuals (this happened
+  # for real on 2026-11-09, recovered via backfill_data/2026-11-09.json).
+  # Real scheduling is handled entirely externally by cron-job.org calling
+  # workflow_dispatch with an explicit mode at 7:00 AM / 9:31 AM / 6:00 PM
+  # ET. Do not re-add a schedule: block without fixing this no-op risk.
+  workflow_dispatch:            # Allow manual trigger from GitHub Actions tab (and from cron-job.org)
     inputs:
       mode:
         description: 'Which pipeline mode to run'
@@ -60,14 +58,7 @@ jobs:
       - name: Determine mode
         id: mode
         run: |
-          SCHEDULE="${{ github.event.schedule }}"
-          if [ "$SCHEDULE" = "0 22 * * 1-5" ]; then
-            echo "value=accuracy" >> "$GITHUB_OUTPUT"
-          elif [ "$SCHEDULE" = "31 13 * * 1-5" ] || [ "$SCHEDULE" = "31 14 * * 1-5" ]; then
-            echo "value=market_open" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${{ github.event.inputs.mode || 'predictions' }}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "value=${{ github.event.inputs.mode || 'predictions' }}" >> "$GITHUB_OUTPUT"
 
       - name: Run pipeline
         env:
