@@ -1,0 +1,187 @@
+{
+  "market_summary": "Strong October jobs report boosts market sentiment, but AI sector faces potential unwinding of bets.",
+  "winners": [
+    {
+      "rank": 1,
+      "ticker": "AMD",
+      "company": "Advanced Micro Devices",
+      "sector": "Technology",
+      "predicted_change_pct": 8.5,
+      "reason": "Strong 1-day gain, high volume.",
+      "prev_close": 449.04
+    },
+    {
+      "rank": 2,
+      "ticker": "RIOT",
+      "company": "Riot Platforms",
+      "sector": "Financial Services",
+      "predicted_change_pct": 7.8,
+      "reason": "High 1-day momentum, strong week.",
+      "prev_close": 16.71
+    },
+    {
+      "rank": 3,
+      "ticker": "NET",
+      "company": "Cloudflare",
+      "sector": "Technology",
+      "predicted_change_pct": 7.5,
+      "reason": "Strong 1-day gain, high volume.",
+      "prev_close": 268.75
+    },
+    {
+      "rank": 4,
+      "ticker": "LI",
+      "company": "Li Auto",
+      "sector": "Automotive",
+      "predicted_change_pct": 7.0,
+      "reason": "Strong momentum, high volume.",
+      "prev_close": 12.53
+    },
+    {
+      "rank": 5,
+      "ticker": "XPEV",
+      "company": "XPeng",
+      "sector": "Automotive",
+      "predicted_change_pct": 6.5,
+      "reason": "Strong 1-day gain, high volume.",
+      "prev_close": 10.24
+    },
+    {
+      "rank": 6,
+      "ticker": "HUT",
+      "company": "Hut 8 Mining",
+      "sector": "Financial Services",
+      "predicted_change_pct": 6.0,
+      "reason": "Strong 1-day gain, high volume.",
+      "prev_close": 52.65
+    },
+    {
+      "rank": 7,
+      "ticker": "NIO",
+      "company": "NIO Inc.",
+      "sector": "Automotive",
+      "predicted_change_pct": 5.8,
+      "reason": "Strong 1-day gain, high volume.",
+      "prev_close": 3.39
+    },
+    {
+      "rank": 8,
+      "ticker": "HUM",
+      "company": "Humana Inc.",
+      "sector": "Healthcare",
+      "predicted_change_pct": 5.5,
+      "reason": "Strong momentum, high volume.",
+      "prev_close": 433.74
+    },
+    {
+      "rank": 9,
+      "ticker": "QCOM",
+      "company": "Qualcomm",
+      "sector": "Technology",
+      "predicted_change_pct": 5.2,
+      "reason": "Strong 1-day gain, high volume.",
+      "prev_close": 165.41
+    },
+    {
+      "rank": 10,
+      "ticker": "MRNA",
+      "company": "Moderna",
+      "sector": "Healthcare",
+      "predicted_change_pct": 5.0,
+      "reason": "Strong momentum, recent gains.",
+      "prev_close": 254.19
+    }
+  ],
+  "losers": [
+    {
+      "rank": 1,
+      "ticker": "TEAM",
+      "company": "Atlassian Corporation Plc",
+      "sector": "Technology",
+      "predicted_change_pct": -8.0,
+      "reason": "Significant 1-day drop, high volume.",
+      "prev_close": 153.68
+    },
+    {
+      "rank": 2,
+      "ticker": "AFRM",
+      "company": "Affirm Holdings",
+      "sector": "Financial Services",
+      "predicted_change_pct": -4.5,
+      "reason": "High volume, negative 1-day trend.",
+      "prev_close": 68.11
+    },
+    {
+      "rank": 3,
+      "ticker": "BKNG",
+      "company": "Booking Holdings",
+      "sector": "Consumer Discretionary",
+      "predicted_change_pct": -4.0,
+      "reason": "Significant 1-day drop, recent momentum.",
+      "prev_close": 160.67
+    },
+    {
+      "rank": 4,
+      "ticker": "LYFT",
+      "company": "Lyft",
+      "sector": "Consumer Discretionary",
+      "predicted_change_pct": -3.8,
+      "reason": "Significant 1-day drop, high volume.",
+      "prev_close": 17.09
+    },
+    {
+      "rank": 5,
+      "ticker": "DXCM",
+      "company": "DexCom",
+      "sector": "Healthcare",
+      "predicted_change_pct": -3.5,
+      "reason": "Significant 1-day drop, low momentum.",
+      "prev_close": 79.41
+    },
+    {
+      "rank": 6,
+      "ticker": "NFLX",
+      "company": "Netflix",
+      "sector": "Communication Services",
+      "predicted_change_pct": -3.0,
+      "reason": "Significant 1-day drop, low momentum.",
+      "prev_close": 63.41
+    },
+    {
+      "rank": 7,
+      "ticker": "ABT",
+      "company": "Abbott Laboratories",
+      "sector": "Healthcare",
+      "predicted_change_pct": -2.8,
+      "reason": "Significant 1-day drop, negative trend.",
+      "prev_close": 109.93
+    },
+    {
+      "rank": 8,
+      "ticker": "CRM",
+      "company": "Salesforce",
+      "sector": "Technology",
+      "predicted_change_pct": -2.5,
+      "reason": "Significant 1-day drop, low momentum.",
+      "prev_close": 213.65
+    },
+    {
+      "rank": 9,
+      "ticker": "ZS",
+      "company": "Zscaler",
+      "sector": "Technology",
+      "predicted_change_pct": -2.3,
+      "reason": "Significant 1-day drop, low momentum.",
+      "prev_close": 197.66
+    },
+    {
+      "rank": 10,
+      "ticker": "WMT",
+      "company": "Walmart",
+      "sector": "Consumer Staples",
+      "predicted_change_pct": -2.0,
+      "reason": "Negative 1-day trend, broad market.",
+      "prev_close": 125.52
+    }
+  ]
+}
