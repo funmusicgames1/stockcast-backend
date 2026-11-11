@@ -2,7 +2,8 @@
 email_notify.py — Sends the daily Levels email via Gmail SMTP (stdlib only,
 no new paid service). Requires a Gmail App Password (Google Account >
 Security > App Passwords, needs 2FA already on) set as GMAIL_APP_PASSWORD,
-and the sending address as GMAIL_SENDER. Sends to the same address.
+and the sending address as GMAIL_SENDER. Delivered to GMAIL_RECIPIENT
+(falls back to GMAIL_SENDER if unset).
 """
 
 import os
@@ -23,15 +24,16 @@ SMTP_PORT = 465  # implicit SSL -- STARTTLS on 587 gets reset ("Connection
 
 
 def _send(subject: str, html_body: str, csv_rows: list, csv_headers: list, csv_filename: str) -> bool:
-    sender   = os.getenv("GMAIL_SENDER")
-    app_pass = os.getenv("GMAIL_APP_PASSWORD")
+    sender    = os.getenv("GMAIL_SENDER")
+    app_pass  = os.getenv("GMAIL_APP_PASSWORD")
+    recipient = os.getenv("GMAIL_RECIPIENT") or sender
     if not sender or not app_pass:
         logger.warning("GMAIL_SENDER/GMAIL_APP_PASSWORD not set — skipping email.")
         return False
 
     msg = MIMEMultipart()
     msg["From"]    = sender
-    msg["To"]      = sender
+    msg["To"]      = recipient
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
 
@@ -50,7 +52,7 @@ def _send(subject: str, html_body: str, csv_rows: list, csv_headers: list, csv_f
     try:
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as server:
             server.login(sender, app_pass)
-            server.sendmail(sender, [sender], msg.as_string())
+            server.sendmail(sender, [recipient], msg.as_string())
         logger.info(f"Email sent: {subject}")
         return True
     except Exception as e:

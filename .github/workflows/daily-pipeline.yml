@@ -79,6 +79,7 @@ jobs:
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
           GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_RECIPIENT: ${{ secrets.GMAIL_RECIPIENT }}
         run: |
           if [ "${{ steps.mode.outputs.value }}" = "backfill" ]; then
             python main.py --mode backfill --file "${{ github.event.inputs.backfill_file }}"
