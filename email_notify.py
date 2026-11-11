@@ -18,7 +18,8 @@ from email import encoders
 logger = logging.getLogger(__name__)
 
 SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
+SMTP_PORT = 465  # implicit SSL -- STARTTLS on 587 gets reset ("Connection
+                 # unexpectedly closed") from GitHub Actions runner IP ranges
 
 
 def _send(subject: str, html_body: str, csv_rows: list, csv_headers: list, csv_filename: str) -> bool:
@@ -47,8 +48,7 @@ def _send(subject: str, html_body: str, csv_rows: list, csv_headers: list, csv_f
         msg.attach(part)
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-            server.starttls()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as server:
             server.login(sender, app_pass)
             server.sendmail(sender, [sender], msg.as_string())
         logger.info(f"Email sent: {subject}")
