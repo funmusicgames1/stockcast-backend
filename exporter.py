@@ -50,6 +50,7 @@ def build_frontend_json(
     gemini_predictions: dict | None = None,
     today_open_prices_map: dict | None = None,
     yesterday_open_prices_map: dict | None = None,
+    levels_data: dict | None = None,
 ) -> dict:
     """
     Assemble the full JSON payload the frontend needs.
@@ -175,6 +176,7 @@ def build_frontend_json(
         },
         "indices":          index_data,
         "full_ranked_list": build_full_ranked_list(stock_data) if stock_data else [],
+        "levels":           levels_data or {},
     }
 
     return payload

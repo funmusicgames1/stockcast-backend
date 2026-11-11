@@ -211,3 +211,62 @@ def get_open_prices_for_date(date_str: str) -> dict:
     except Exception as e:
         logger.error(f"Failed to fetch open prices for {date_str}: {e}")
         return {}
+
+
+def save_daily_levels(date_str: str, rows: list) -> bool:
+    """
+    Save/update daily levels rows (OHLC, Pivot/S/R, and/or gap X1-X5) for the
+    small fixed watchlist. Upserts on (date, ticker) so the morning Pivot/S/R
+    save and the later gap-levels save merge into the same row instead of
+    creating a second one.
+    rows: [{"ticker": ..., "open":..., "pivot":..., "x1":..., ...}, ...]
+    """
+    try:
+        client = get_client()
+        payload = [{"date": date_str, **row} for row in rows]
+        client.table("daily_levels").upsert(payload, on_conflict="date,ticker").execute()
+        logger.info(f"Saved {len(payload)} daily_levels rows for {date_str}.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save daily levels: {e}")
+        return False
+
+
+def get_daily_levels_for_date(date_str: str) -> dict:
+    """Fetch daily levels rows for a date, keyed by ticker."""
+    try:
+        client = get_client()
+        result = (
+            client.table("daily_levels")
+            .select("*")
+            .eq("date", date_str)
+            .execute()
+        )
+        return {row["ticker"]: row for row in (result.data or [])}
+    except Exception as e:
+        logger.error(f"Failed to fetch daily levels for {date_str}: {e}")
+        return {}
+
+
+def get_latest_daily_levels() -> dict:
+    """
+    Fetch the most recent date's daily_levels rows, keyed by ticker. Used by
+    every pipeline mode so the "Levels" section in data.json always reflects
+    the latest known data regardless of which mode last exported.
+    """
+    try:
+        client = get_client()
+        latest = (
+            client.table("daily_levels")
+            .select("date")
+            .order("date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not latest.data:
+            return {}
+        latest_date = latest.data[0]["date"]
+        return get_daily_levels_for_date(latest_date)
+    except Exception as e:
+        logger.error(f"Failed to fetch latest daily levels: {e}")
+        return {}

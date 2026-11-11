@@ -26,6 +26,8 @@ on:
           - backfill
           - backfill_open
           - fix_prev_close
+          - levels_morning
+          - levels_gap
       backfill_file:
         description: 'Path to a prediction JSON file under backfill_data/ (used when mode is backfill or backfill_open)'
         required: false
@@ -75,6 +77,8 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
           if [ "${{ steps.mode.outputs.value }}" = "backfill" ]; then
             python main.py --mode backfill --file "${{ github.event.inputs.backfill_file }}"

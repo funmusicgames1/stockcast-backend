@@ -521,3 +521,102 @@ def fetch_open_price_at_time(tickers: list, date_str: str, et_hour: int = 9, et_
 
     logger.info(f"Fetched historical open prices for {len(result)}/{len(tickers)} tickers near {et_hour:02d}:{et_minute:02d} ET on {date_str}.")
     return result
+
+
+def fetch_daily_ohlc(tickers: list, date_str: str) -> dict:
+    """
+    Fetch the full daily O/H/L/C bar for a specific date (not just the close
+    that fetch_actual_prices returns) — used for the Pivot/Support/Resistance
+    levels, which need the whole prior day's range.
+    Returns {ticker: {"open","high","low","close"}}.
+    """
+    target   = datetime.strptime(date_str, "%Y-%m-%d")
+    start_ts = int((target - timedelta(days=5)).timestamp())
+    end_ts   = int((target + timedelta(days=2)).timestamp())
+
+    result = {}
+    for ticker in tickers:
+        try:
+            url    = f"{YF_BASE}{_yf_symbol(ticker)}"
+            params = {"period1": start_ts, "period2": end_ts, "interval": "1d", "includePrePost": "false"}
+            resp   = _SESSION.get(url, headers=YF_HEADERS, params=params, timeout=15)
+            if resp.status_code != 200:
+                continue
+            data   = resp.json()
+            r      = (data.get("chart", {}).get("result") or [None])[0]
+            if not r:
+                continue
+            timestamps = r.get("timestamp", [])
+            quote      = r.get("indicators", {}).get("quote", [{}])[0]
+            opens, highs, lows, closes = quote.get("open", []), quote.get("high", []), quote.get("low", []), quote.get("close", [])
+            for i, ts in enumerate(timestamps):
+                bar_date_str = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
+                if bar_date_str == date_str and closes[i] is not None:
+                    result[ticker] = {
+                        "open":  round(float(opens[i]), 2) if opens[i] is not None else None,
+                        "high":  round(float(highs[i]), 2) if highs[i] is not None else None,
+                        "low":   round(float(lows[i]), 2) if lows[i] is not None else None,
+                        "close": round(float(closes[i]), 2),
+                    }
+                    break
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+    logger.info(f"Fetched daily OHLC for {len(result)}/{len(tickers)} tickers on {date_str}.")
+    return result
+
+
+def fetch_3min_candle(tickers: list, date_str: str, et_hour: int, et_minute: int) -> dict:
+    """
+    Aggregate 3 consecutive 1-minute bars starting at a specific ET time on a
+    specific date into one O/H/L/C candle. Used for the gap-level (X1-X5)
+    calculation: the previous day's last 3-min candle (15:57 ET) and today's
+    first 3-min candle (9:30 ET).
+    Only works for recent dates — Yahoo's 1-minute granularity is only
+    available for roughly the last 30 days.
+    Returns {ticker: {"open","high","low","close"}}.
+    """
+    import pytz
+
+    et = pytz.timezone("America/New_York")
+    naive_start = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=et_hour, minute=et_minute)
+    start_et = et.localize(naive_start)
+    start_ts = int(start_et.timestamp())
+    window_start = start_ts - 300
+    window_end   = start_ts + 300  # covers the 3 target minutes plus slack
+
+    result = {}
+    for ticker in tickers:
+        try:
+            url    = f"{YF_BASE}{_yf_symbol(ticker)}"
+            params = {"period1": window_start, "period2": window_end, "interval": "1m"}
+            resp   = _SESSION.get(url, headers=YF_HEADERS, params=params, timeout=15)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            r    = (data.get("chart", {}).get("result") or [None])[0]
+            if not r:
+                continue
+            timestamps = r.get("timestamp", [])
+            quote      = r.get("indicators", {}).get("quote", [{}])[0]
+            opens, highs, lows, closes = quote.get("open", []), quote.get("high", []), quote.get("low", []), quote.get("close", [])
+
+            bars = []
+            for i, ts in enumerate(timestamps):
+                if start_ts <= ts < start_ts + 180 and closes[i] is not None:
+                    bars.append((opens[i], highs[i], lows[i], closes[i]))
+
+            if bars:
+                result[ticker] = {
+                    "open":  round(float(bars[0][0]), 2) if bars[0][0] is not None else None,
+                    "high":  round(max(b[1] for b in bars if b[1] is not None), 2),
+                    "low":   round(min(b[2] for b in bars if b[2] is not None), 2),
+                    "close": round(float(bars[-1][3]), 2),
+                }
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+    logger.info(f"Fetched 3-min candle for {len(result)}/{len(tickers)} tickers starting {et_hour:02d}:{et_minute:02d} ET on {date_str}.")
+    return result

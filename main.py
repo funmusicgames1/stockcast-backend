@@ -185,6 +185,8 @@ def run_predictions():
     logger.info("Step 6/6: Exporting data.json...")
     from exporter import build_frontend_json, write_json, fetch_index_data
 
+    from database import get_latest_daily_levels
+
     index_data = fetch_index_data()
     payload    = build_frontend_json(
         today_predictions          = primary_predictions,
@@ -196,6 +198,7 @@ def run_predictions():
         claude_predictions         = claude_predictions,
         gemini_predictions         = gemini_predictions,
         yesterday_open_prices_map  = yesterday_open_prices_map,
+        levels_data                = get_latest_daily_levels(),
     )
 
     _finish(payload)
@@ -318,6 +321,8 @@ def run_fix_prev_close(date_str: str):
         ]
     yesterday_open_prices_map = get_open_prices_for_date(yesterday_str)
 
+    from database import get_latest_daily_levels
+
     index_data = fetch_index_data()
     payload    = build_frontend_json(
         today_predictions          = predictions,
@@ -329,6 +334,7 @@ def run_fix_prev_close(date_str: str):
         claude_predictions         = None,
         gemini_predictions         = predictions,
         yesterday_open_prices_map  = yesterday_open_prices_map,
+        levels_data                = get_latest_daily_levels(),
     )
     _finish(payload)
 
@@ -394,6 +400,7 @@ def run_backfill_open(json_path: str, date_str: str):
         for a in actuals_rows
     ]
     prices_map = get_open_prices_for_date(date_str)
+    from database import get_latest_daily_levels
     index_data = fetch_index_data()
     payload    = build_frontend_json(
         today_predictions          = today_predictions,
@@ -406,6 +413,7 @@ def run_backfill_open(json_path: str, date_str: str):
         gemini_predictions         = today_predictions,
         today_open_prices_map      = prices_map,
         yesterday_open_prices_map  = prices_map,
+        levels_data                = get_latest_daily_levels(),
     )
     _finish(payload)
 
@@ -524,6 +532,7 @@ def run_market_open():
 
     today_prices_map     = get_open_prices_for_date(today_str)
     yesterday_prices_map = get_open_prices_for_date(display_yesterday_str)
+    from database import get_latest_daily_levels
     index_data = fetch_index_data()
     payload    = build_frontend_json(
         today_predictions          = today_predictions,
@@ -536,6 +545,7 @@ def run_market_open():
         gemini_predictions         = today_predictions,
         today_open_prices_map      = today_prices_map,
         yesterday_open_prices_map  = yesterday_prices_map,
+        levels_data                = get_latest_daily_levels(),
     )
 
     _finish(payload)
@@ -613,6 +623,7 @@ def run_accuracy():
     from database import get_open_prices_for_date
 
     todays_open_prices_map = get_open_prices_for_date(today_str)
+    from database import get_latest_daily_levels
     index_data = fetch_index_data()
     payload    = build_frontend_json(
         today_predictions          = today_predictions,
@@ -625,6 +636,133 @@ def run_accuracy():
         gemini_predictions         = today_predictions,
         today_open_prices_map      = todays_open_prices_map,
         yesterday_open_prices_map  = todays_open_prices_map,
+        levels_data                = get_latest_daily_levels(),
+    )
+
+    _finish(payload)
+
+
+def run_levels_morning():
+    """
+    7:00 AM ET: OHLC + Pivot/Support/Resistance for the fixed watchlist
+    (QQQ, SPY, IWM, TSLA, AMZN, META), using the prior trading day's close --
+    fully knowable now, no need to wait for today's open. Independent of the
+    AI prediction pipeline/tables.
+    """
+    logger.info("=" * 60)
+    logger.info("StockCast LEVELS (morning Pivot/S/R) run starting...")
+    logger.info(f"Date: {today_cst().isoformat()}")
+    logger.info("=" * 60)
+
+    from database import save_daily_levels, get_predictions_for_date, get_latest_daily_levels
+    from levels import compute_pivot_levels
+
+    today_str = today_cst().isoformat()
+    prev_trading_date_str = _find_last_predictions_date(get_predictions_for_date)
+
+    rows = compute_pivot_levels(prev_trading_date_str)
+    if not rows:
+        logger.error("No pivot levels computed — aborting.")
+        return
+
+    saved = save_daily_levels(today_str, rows)
+    if not saved:
+        logger.warning("Failed to save daily levels — continuing anyway.")
+
+    from email_notify import send_pivot_levels_email
+    send_pivot_levels_email(rows, today_str)
+
+    logger.info("Exporting updated data.json with morning levels...")
+    from exporter import build_frontend_json, fetch_index_data
+    from database import get_open_prices_for_date, get_actuals_for_date
+
+    yesterday_str = prev_trading_date_str
+    yesterday_predictions = get_predictions_for_date(yesterday_str)
+    yesterday_actuals = []
+    if yesterday_predictions:
+        actuals_rows = get_actuals_for_date(yesterday_str)
+        yesterday_actuals = [
+            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
+            for a in actuals_rows
+        ]
+
+    index_data = fetch_index_data()
+    payload = build_frontend_json(
+        today_predictions          = get_predictions_for_date(today_str),
+        yesterday_predictions      = yesterday_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = yesterday_str,
+        index_data                 = index_data,
+        stock_data                 = None,
+        claude_predictions         = None,
+        gemini_predictions         = get_predictions_for_date(today_str),
+        yesterday_open_prices_map  = get_open_prices_for_date(yesterday_str),
+        levels_data                = get_latest_daily_levels(),
+    )
+
+    _finish(payload)
+
+
+def run_levels_gap():
+    """
+    ~9:34 AM ET: gap-based X1-X5 levels for the fixed watchlist, once today's
+    first 3-min candle (9:30-9:33 ET) has closed. Updates (upserts) today's
+    daily_levels row rather than overwriting the morning Pivot/S/R fields.
+    """
+    logger.info("=" * 60)
+    logger.info("StockCast LEVELS (gap X1-X5) run starting...")
+    logger.info(f"Date: {today_cst().isoformat()}")
+    logger.info("=" * 60)
+
+    from database import save_daily_levels, get_predictions_for_date, get_latest_daily_levels, get_daily_levels_for_date
+    from levels import compute_gap_levels
+
+    today_str = today_cst().isoformat()
+    prev_trading_date_str = _find_last_predictions_date(get_predictions_for_date)
+
+    existing = get_daily_levels_for_date(today_str)
+    if not existing:
+        logger.warning(f"No daily_levels row for {today_str} yet (morning run may not have fired) — "
+                        "gap levels will still be saved as new rows.")
+
+    rows = compute_gap_levels(today_str, prev_trading_date_str)
+    if not rows:
+        logger.error("No gap levels computed — aborting.")
+        return
+
+    saved = save_daily_levels(today_str, rows)
+    if not saved:
+        logger.warning("Failed to save daily levels — continuing anyway.")
+
+    from email_notify import send_gap_levels_email
+    send_gap_levels_email(rows, today_str)
+
+    logger.info("Exporting updated data.json with gap levels...")
+    from exporter import build_frontend_json, fetch_index_data
+    from database import get_open_prices_for_date, get_actuals_for_date
+
+    yesterday_str = prev_trading_date_str
+    yesterday_predictions = get_predictions_for_date(yesterday_str)
+    yesterday_actuals = []
+    if yesterday_predictions:
+        actuals_rows = get_actuals_for_date(yesterday_str)
+        yesterday_actuals = [
+            {"ticker": a["ticker"], "actual_change_pct": a["actual_change_pct"], "close_price": a.get("close_price")}
+            for a in actuals_rows
+        ]
+
+    index_data = fetch_index_data()
+    payload = build_frontend_json(
+        today_predictions          = get_predictions_for_date(today_str),
+        yesterday_predictions      = yesterday_predictions,
+        yesterday_actuals          = yesterday_actuals,
+        yesterday_date_str         = yesterday_str,
+        index_data                 = index_data,
+        stock_data                 = None,
+        claude_predictions         = None,
+        gemini_predictions         = get_predictions_for_date(today_str),
+        yesterday_open_prices_map  = get_open_prices_for_date(yesterday_str),
+        levels_data                = get_latest_daily_levels(),
     )
 
     _finish(payload)
@@ -698,7 +836,7 @@ def push_to_github(json_path: str) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill", "backfill_open", "fix_prev_close"], default="predictions")
+    parser.add_argument("--mode", choices=["predictions", "market_open", "accuracy", "backfill", "backfill_open", "fix_prev_close", "levels_morning", "levels_gap"], default="predictions")
     parser.add_argument("--file", help="JSON file path for --mode backfill / backfill_open (see backfill_data/)")
     parser.add_argument("--date", help="Target date (YYYY-MM-DD) for --mode backfill_open / fix_prev_close")
     args = parser.parse_args()
@@ -721,3 +859,7 @@ if __name__ == "__main__":
         if not args.date:
             parser.error("--mode fix_prev_close requires --date <YYYY-MM-DD>")
         run_fix_prev_close(args.date)
+    elif args.mode == "levels_morning":
+        run_levels_morning()
+    elif args.mode == "levels_gap":
+        run_levels_gap()
