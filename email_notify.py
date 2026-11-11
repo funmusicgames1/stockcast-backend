@@ -80,7 +80,7 @@ def send_pivot_levels_email(rows: list, date_str: str) -> bool:
         for r in rows
     )
     html = f"""
-    <h2>StockCast Daily Levels — {date_str}</h2>
+    <h2>Daily Levels — {date_str}</h2>
     <p>OHLC + Pivot/Support/Resistance from {rows[0]['prev_date']}'s close.</p>
     <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:monospace">
       <tr><th>Ticker</th><th>Open</th><th>High</th><th>Low</th><th>Close</th>
@@ -90,7 +90,7 @@ def send_pivot_levels_email(rows: list, date_str: str) -> bool:
     <p style="color:#888;font-size:0.85em">Gap levels (X1-X5) follow in a separate email after today's market open.</p>
     """
     headers = ["ticker", "prev_date", "open", "high", "low", "close", "pivot", "support", "resistance"]
-    return _send(f"StockCast Levels {date_str} — Pivot/S/R", html, rows, headers, f"levels_pivot_{date_str}.csv")
+    return _send(f"Daily Levels {date_str} — Pivot/S/R", html, rows, headers, f"levels_pivot_{date_str}.csv")
 
 
 def send_gap_levels_email(rows: list, date_str: str) -> bool:
@@ -105,11 +105,11 @@ def send_gap_levels_email(rows: list, date_str: str) -> bool:
         for r in rows
     )
     html = f"""
-    <h2>StockCast Daily Levels — {date_str} (Gap Levels)</h2>
+    <h2>Daily Levels — {date_str} (Gap Levels)</h2>
     <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:monospace">
       <tr><th>Ticker</th><th>Gap</th><th>X1</th><th>X2</th><th>X3</th><th>X4</th><th>X5</th></tr>
       {table_rows}
     </table>
     """
     headers = ["ticker", "a1", "b1", "gap_direction", "x1", "x2", "x3", "x4", "x5"]
-    return _send(f"StockCast Levels {date_str} — Gap X1-X5", html, rows, headers, f"levels_gap_{date_str}.csv")
+    return _send(f"Daily Levels {date_str} — Gap X1-X5", html, rows, headers, f"levels_gap_{date_str}.csv")
