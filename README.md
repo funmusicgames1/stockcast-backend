@@ -14,7 +14,7 @@ FMP (fallback)        ──┼──► main.py ──► Claude + Gemini (para
 NewsAPI (free)         ──┘                                          └──► data.json ──► GitHub (frontend repo) ──► Vercel
 ```
 
-The pipeline runs in **three separate modes on three separate schedules**,
+The pipeline runs in **five separate modes on five separate schedules**,
 not one daily run:
 
 | Mode | When | What it does |
@@ -22,6 +22,12 @@ not one daily run:
 | `predictions` | 7:00 AM ET, weekdays | Fetch stock data + news, call Claude & Gemini, save today's predictions |
 | `market_open` | 9:31 AM ET, weekdays | Snapshot each ticker's real price ~1 min after the market opens, record the gap vs. prior close — for options trading, a lot of a predicted move can already happen before you can trade it |
 | `accuracy` | 6:00 PM ET, weekdays | Score *today's own* predictions against today's real close — same evening, not the next morning |
+| `levels_morning` | 7:00 AM ET, weekdays | OHLC + Pivot/Support/Resistance for a small fixed watchlist (see **Daily Levels** below) |
+| `levels_gap` | 9:34 AM ET, weekdays | Gap-based X1-X5 levels for the same watchlist, once today's first 3-min candle has closed |
+
+`levels_morning`/`levels_gap` are independent of the AI prediction
+pipeline — separate tables, separate email, separate frontend section —
+they just happen to share the same scheduling infrastructure.
 
 **Why three separate runs instead of one**: the original design scored
 *yesterday's* predictions each morning, a full day behind. Splitting it
@@ -47,18 +53,27 @@ Authorization: Bearer <GitHub PAT, repo scope>
 Body: {"ref":"main","inputs":{"mode":"predictions"}}
 ```
 
-Three jobs are configured there, each in the `America/New_York` timezone
+Five jobs are configured there, each in the `America/New_York` timezone
 (cron-job.org handles DST natively — no manual adjustment needed across
 the Nov 1 / March transitions):
 
 - **StockCast - Morning Predictions** — 7:00 AM ET, weekdays
 - **StockCast - Market Open Checkpoint** — 9:31 AM ET, weekdays
 - **StockCast - EOD Accuracy** — 6:00 PM ET, weekdays
+- **StockCast - Daily Levels Morning** — 7:00 AM ET, weekdays
+- **StockCast - Daily Levels Gap** — 9:34 AM ET, weekdays
 
-The old `on: schedule:` cron entries are still present in
-`.github/workflows/daily-pipeline.yml` as a harmless backup — if GitHub's
-scheduler ever fires one, it's a no-op or a redundant (idempotent) rerun,
-never harmful. They're not the primary trigger anymore.
+**The `on: schedule:` block has been removed entirely** from
+`.github/workflows/daily-pipeline.yml` — it used to be kept as a
+"harmless backup" on the theory that a broken scheduler just runs late
+or not at all. It doesn't: on 2026-11-09 it fired the pipeline in
+`predictions` mode twice at unpredictable delayed times, each firing
+silently overwriting that day's real morning predictions with a fresh
+non-deterministic AI call and desyncing it from the already-captured
+market-open checkpoint and EOD actuals (recovered via
+`backfill_data/2026-11-09.json`). `workflow_dispatch` (triggered only by
+cron-job.org, or manually) is now the *only* trigger. Do not re-add a
+`schedule:` block without separately fixing this no-op/overwrite risk.
 
 ### CST-aware dates, not bare `date.today()`
 
@@ -104,6 +119,81 @@ GitHub Actions' "Run workflow" button / `gh workflow run`).
   Only supports `today_cst()` — `save_predictions()` always writes under
   today's date internally, so this would corrupt a different day if used
   on one.
+- **`levels_morning`** / **`levels_gap`** — see **Daily Levels** below.
+
+---
+
+## Daily Levels (`levels.py`)
+
+Independent of the AI prediction pipeline — these are objective
+calculations from real price data, not forecasts. Fixed watchlist:
+`QQQ, SPY, IWM, TSLA, AMZN, META`. Delivered via email (Gmail SMTP) and a
+"Daily Levels" section on the frontend, both with CSV download.
+
+### Stage 1 — `levels_morning` (7:00 AM ET)
+
+Prior trading day's OHLC, plus the classic floor-trader pivot:
+
+```
+pivot      = (H + L + C) / 3
+support    = 2 * pivot - H
+resistance = 2 * pivot - L
+```
+
+where H/L/C are the prior trading day's high/low/close
+(`fetcher.fetch_daily_ohlc`). Fully knowable the moment that day closed —
+no reason to wait for today's open. Saved to `daily_levels` with the
+x1-x5 columns left `null`.
+
+### Stage 2 — `levels_gap` (~9:34 AM ET)
+
+Gap-based X1-X5 levels, computed once today's first 3-minute candle has
+actually closed (9:30-9:33 ET) — this is why it can't run earlier than
+~9:34. The formula, exactly as specified:
+
+```
+A1 = previous day's LAST 3-min candle's CLOSE   (15:57-16:00 ET)
+B1 = today's FIRST 3-min candle's OPEN           (9:30-9:33 ET)
+
+if A1 < B1:   # gap UP
+    X1 = previous day's last 3-min candle HIGH
+    X2 = today's first 3-min candle HIGH
+if A1 > B1:   # gap DOWN
+    X1 = previous day's last 3-min candle LOW
+    X2 = today's first 3-min candle LOW
+
+X3 = X2 - X1
+X4 = X3 / 2
+X5 = X1 - X4   if gap UP
+X5 = X2 + X4   if gap DOWN
+```
+
+Implemented in `levels.compute_gap_levels()`, using
+`fetcher.fetch_3min_candle()` to aggregate three consecutive 1-minute
+Yahoo bars into one O/H/L/C candle (Yahoo has no native 3-min interval).
+Upserted into the **same** `daily_levels` row the morning stage created
+(`UNIQUE(date, ticker)` in `supabase_setup.sql`), so one row per
+ticker/day ends up holding both the Pivot/S/R and the gap fields.
+
+### Delivery
+
+- **Email** (`email_notify.py`) — Gmail SMTP via `smtplib.SMTP_SSL` on
+  **port 465** (STARTTLS on 587 gets reset — "Connection unexpectedly
+  closed" — from GitHub Actions runner IP ranges; implicit SSL on 465
+  doesn't have that problem). Two emails a day, one per stage. Needs
+  `GMAIL_SENDER` (the Gmail account the App Password belongs to —
+  **must match exactly**, a mismatch also presents as "Connection
+  unexpectedly closed" during login, not an auth error), `GMAIL_APP_PASSWORD`,
+  and `GMAIL_RECIPIENT` (defaults to `GMAIL_SENDER` if unset).
+- **Frontend** — a "Daily Levels" section on the StockCast site, reading
+  `data.json`'s `levels` key for today and a date picker (same pattern as
+  Historical Performance) that queries the `daily_levels` table directly
+  via Supabase for any other date.
+- Every pipeline mode (not just the two levels modes) re-fetches the
+  latest saved levels via `database.get_latest_daily_levels()` before
+  exporting `data.json`, so a later `predictions`/`market_open`/`accuracy`
+  run never silently drops the Levels section — the same class of bug
+  that briefly broke "yesterday" in Historical Performance.
 
 ---
 
@@ -114,8 +204,9 @@ GitHub Actions' "Run workflow" button / `gh workflow run`).
   output, `claude.available: false` in `data.json`), but Claude
   predictions have been absent since this started. Needs a fresh key
   from console.anthropic.com.
-- **GitHub's native scheduler** — see above. The cron-job.org jobs are
-  the real fix; the old `on: schedule:` entries are vestigial.
+- **GitHub's native scheduler** — confirmed broken platform-wide since
+  2026-08-26. Fully removed from this workflow (see Scheduling above);
+  cron-job.org → `workflow_dispatch` is the only trigger now.
 
 ---
 
@@ -155,6 +246,9 @@ FRONTEND_REPO       # e.g. funmusicgames1/stockcast-frontend
 FIREBASE_PROJECT_ID
 FIREBASE_CLIENT_EMAIL
 FIREBASE_PRIVATE_KEY
+GMAIL_SENDER        # Gmail address the App Password belongs to
+GMAIL_APP_PASSWORD  # Google Account -> Security -> App Passwords (needs 2FA on)
+GMAIL_RECIPIENT     # delivery address; defaults to GMAIL_SENDER if unset
 OUTPUT_JSON_PATH    # ./data.json
 ```
 
@@ -190,8 +284,11 @@ stockcast-backend/
 │                          # lookup (1-minute bars)
 ├── news.py                # NewsAPI news + sentiment fetcher
 ├── analyzer.py            # Claude + Gemini predictions, run in parallel
+├── levels.py               # Daily Levels: Pivot/S/R + gap X1-X5 formulas
+│                          # (independent of the AI prediction pipeline)
+├── email_notify.py         # Daily Levels email via Gmail SMTP
 ├── database.py            # Supabase read/write layer (predictions,
-│                          # actuals, open_prices)
+│                          # actuals, open_prices, daily_levels)
 ├── exporter.py             # Builds data.json; enriches with open-price
 │                          # and actuals data
 ├── datetime_utils.py      # today_cst() — CST-aware date, used instead
@@ -200,10 +297,9 @@ stockcast-backend/
 │                          # backfill_open (one per backfilled date)
 ├── supabase_setup.sql      # Run once (or incrementally) in Supabase
 │                          # SQL editor — predictions, actuals,
-│                          # open_prices tables + RLS policies
+│                          # open_prices, daily_levels tables + RLS policies
 ├── .github/workflows/
-│   └── daily-pipeline.yml  # workflow_dispatch + vestigial schedule:
-│                          # entries (see Scheduling above)
+│   └── daily-pipeline.yml  # workflow_dispatch only (see Scheduling above)
 ├── requirements.txt
 └── README.md
 ```
@@ -253,9 +349,25 @@ stockcast-backend/
     "nasdaq": { "value": 26477.81, "change_pct": 1.18, "direction": "up" },
     "dow":    { "value": 52377.57, "change_pct": 0.03, "direction": "up" }
   },
-  "full_ranked_list": [...]
+  "full_ranked_list": [...],
+  "levels": {
+    "QQQ": {
+      "date": "2026-11-10", "ticker": "QQQ", "prev_date": "2026-11-09",
+      "open": 662.64, "high": 682.48, "low": 662.02, "close": 679.35,
+      "pivot": 674.62, "support": 666.75, "resistance": 687.21,
+      "a1": null, "b1": null, "gap_direction": null,
+      "x1": null, "x2": null, "x3": null, "x4": null, "x5": null
+    },
+    "SPY": {...}, "IWM": {...}, "TSLA": {...}, "AMZN": {...}, "META": {...}
+  }
 }
 ```
+
+`levels` is keyed by ticker (`QQQ, SPY, IWM, TSLA, AMZN, META`), from the
+`daily_levels` table — see **Daily Levels** above for the formulas. The
+`a1`/`b1`/`gap_direction`/`x1`-`x5` fields are `null` until `levels_gap`
+runs (~9:34 AM ET); `open`/`high`/`low`/`close`/`pivot`/`support`/`resistance`
+are populated by `levels_morning` (7:00 AM ET).
 
 Notes on fields that are new since the original design:
 - `prev_close` is attached at prediction time (6 AM) — it's just
