@@ -55,8 +55,15 @@ def _send(subject: str, html_body: str, csv_rows: list, csv_headers: list, csv_f
             server.sendmail(sender, [recipient], msg.as_string())
         logger.info(f"Email sent: {subject}")
         return True
-    except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+    except Exception:
+        logger.exception("Failed to send email (full traceback):")
+        try:
+            import socket
+            t0 = __import__("time").time()
+            with socket.create_connection((SMTP_HOST, SMTP_PORT), timeout=10) as s:
+                logger.info(f"Raw TCP connect to {SMTP_HOST}:{SMTP_PORT} succeeded in {__import__('time').time()-t0:.2f}s")
+        except Exception as sock_e:
+            logger.error(f"Raw TCP connect to {SMTP_HOST}:{SMTP_PORT} FAILED: {type(sock_e).__name__}: {sock_e}")
         return False
 
 
