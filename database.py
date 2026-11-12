@@ -220,10 +220,17 @@ def save_daily_levels(date_str: str, rows: list) -> bool:
     save and the later gap-levels save merge into the same row instead of
     creating a second one.
     rows: [{"ticker": ..., "open":..., "pivot":..., "x1":..., ...}, ...]
+
+    updated_at is stamped explicitly here (not left to a DB default) so it
+    refreshes on *every* save -- unlike created_at, which only reflects the
+    first insert (the morning stage) since it's deliberately left out of the
+    upsert payload. The frontend uses updated_at as "Last successful run".
     """
     try:
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
         client = get_client()
-        payload = [{"date": date_str, **row} for row in rows]
+        payload = [{"date": date_str, "updated_at": now_iso, **row} for row in rows]
         client.table("daily_levels").upsert(payload, on_conflict="date,ticker").execute()
         logger.info(f"Saved {len(payload)} daily_levels rows for {date_str}.")
         return True

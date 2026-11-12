@@ -66,8 +66,12 @@ CREATE TABLE IF NOT EXISTS daily_levels (
     x4             FLOAT,
     x5             FLOAT,
     created_at     TIMESTAMPTZ DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(date, ticker)
 );
+
+-- If daily_levels already existed before this column was added:
+-- ALTER TABLE daily_levels ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- Indexes for fast date-based queries
 CREATE INDEX IF NOT EXISTS idx_predictions_date ON predictions(date DESC);
