@@ -63,7 +63,7 @@ def build_frontend_json(
     today's close the same evening instead of waiting for tomorrow morning.
 
     today_open_prices_map / yesterday_open_prices_map: {ticker: {"prev_close",
-    "open_price", "gap_pct"}} from the market-open checkpoint run (8:31 AM CST),
+    "open_price", "gap_pct"}} from the market-open checkpoint run (9:31 AM ET),
     keyed to whichever calendar date each block actually needs — these are often
     the SAME date (an EOD run's "yesterday" slot is today's own date) but not
     always, so they're passed separately rather than assumed to match.
@@ -148,9 +148,9 @@ def build_frontend_json(
 
     from datetime import datetime
     import pytz
-    cst      = pytz.timezone("America/Chicago")
-    now_cst  = datetime.now(cst)
-    generated_at = now_cst.strftime("%Y-%m-%dT%H:%M:%S%z")
+    et       = pytz.timezone("America/New_York")
+    now_et   = datetime.now(et)
+    generated_at = now_et.strftime("%Y-%m-%dT%H:%M:%S%z")
 
     payload = {
         "generated_at": generated_at,
