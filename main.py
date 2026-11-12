@@ -1,7 +1,7 @@
 """
 main.py — Orchestrates the StockCast pipeline. Runs in one of two modes:
 
-  --mode predictions  (6:00 AM CST, weekdays)
+  --mode predictions  (7:00 AM ET, weekdays)
       1. Fetch stock price data (Yahoo Finance v8 API + FMP fallback)
       2. Fetch news & sentiment (NewsAPI)
       3. Run AI analysis (Claude + Gemini in parallel)
