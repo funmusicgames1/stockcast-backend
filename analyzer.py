@@ -110,6 +110,8 @@ def _parse_response(raw: str) -> dict | None:
         return predictions
     except (json.JSONDecodeError, AssertionError) as e:
         logger.error(f"Parse/validation failed: {e}")
+        logger.error(f"DIAGNOSTIC: raw response length={len(raw)}")
+        logger.error(f"DIAGNOSTIC: raw response (full):\n{raw}")
         return None
 
 
