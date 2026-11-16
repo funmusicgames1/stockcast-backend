@@ -127,7 +127,7 @@ def _run_claude(prompt: str) -> dict | None:
         logger.info("[Claude] Sending request...")
         message = client.messages.create(
             model="claude-sonnet-5",
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = message.content[0].text
@@ -165,7 +165,7 @@ def _run_gemini(prompt: str) -> dict | None:
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         temperature=0.7,
-                        max_output_tokens=2048,
+                        max_output_tokens=4096,
                         thinking_config=types.ThinkingConfig(thinking_budget=0),
                     )
                 )
@@ -174,7 +174,15 @@ def _run_gemini(prompt: str) -> dict | None:
                 result = _parse_response(raw)
                 if result:
                     result["model"] = "gemini"
-                return result
+                    return result
+                # A 200 OK response that fails to parse (e.g. truncated JSON)
+                # isn't an exception, so it skips the except block's retry
+                # below unless handled explicitly here too.
+                if attempt < 2:
+                    logger.warning(f"[Gemini] Response failed to parse — retrying (attempt {attempt + 2})...")
+                    time.sleep(5)
+                    continue
+                return None
             except Exception as e:
                 err_str = str(e)
                 retryable = "429" in err_str or "503" in err_str or "UNAVAILABLE" in err_str
